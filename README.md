@@ -1,13 +1,13 @@
-- [About](#org1d9a066)
-- [Example Usage](#org58786bc)
-- [Installation](#orgd361f26)
-- [Development](#org2895d01)
+- [About](#org5777b24)
+- [Example Usage](#orga9243ec)
+- [Installation](#org83d1ff7)
+- [Development](#orgabcdda2)
 
     <!-- This file is generated automatically from metadata -->
     <!-- File edits may be overwritten! -->
 
 
-<a id="org1d9a066"></a>
+<a id="org5777b24"></a>
 
 # About
 
@@ -16,7 +16,7 @@
 - Description: Python client interface to the Reiser lab PanelsController.
 - Version: 0.1.0
 - Python Version: 3.10
-- Release Date: 2023-10-17
+- Release Date: 2023-10-18
 - Creation Date: 2023-10-17
 - License: BSD-3-Clause
 - URL: https://github.com/janelia-pypi/panels_controller_client_python
@@ -26,11 +26,12 @@
 - References:
   - https://github.com/janelia-arduino/PanelsController
 - Dependencies:
+  - pyserial
   - click
 ```
 
 
-<a id="org58786bc"></a>
+<a id="orga9243ec"></a>
 
 # Example Usage
 
@@ -51,24 +52,17 @@ from panels_controller_client import PanelsControllerClient
 panels --help
 # Usage: panels [OPTIONS]
 
-#   Command line interface for loadstar sensors.
+#   Command line interface for panels controller client.
 
 # Options:
-#   -p, --port TEXT          Device name (e.g. /dev/ttyUSB0 on GNU/Linux or COM3
+#   -p, --port TEXT          Device name (e.g. /dev/ttyACM0 on GNU/Linux or COM3
 #                            on Windows)
-#   -H, --high-speed         Open serial port with high speed baudrate.
 #   --debug                  Print debugging information.
-#   -i, --info               Print the device info and exit
-#   -T, --tare               Tare before getting sensor values.
-#   -d, --duration INTEGER   Duration of sensor value measurements in seconds.
-#                            [default: 10]
-#   -u, --units TEXT         Sensor value units.  [default: gram]
-#   -f, --units-format TEXT  Units format.  [default: .1f]
 #   -h, --help               Show this message and exit.
 ```
 
 
-<a id="orgd361f26"></a>
+<a id="org83d1ff7"></a>
 
 # Installation
 
@@ -77,8 +71,47 @@ panels --help
 
 ## GNU/Linux
 
+1.  Drivers
 
-### Python Code
+    GNU/Linux computers usually have all of the necessary drivers already installed, but users need the appropriate permissions to open the device and communicate with it.
+    
+    Udev is the GNU/Linux subsystem that detects when things are plugged into your computer.
+    
+    Udev may be used to detect when a device is plugged into the computer and automatically give permission to open that device.
+    
+    If you plug a sensor into your computer and attempt to open it and get an error such as: "FATAL: cannot open /dev/ttyACM0: Permission denied", then you need to install udev rules to give permission to open that device.
+    
+    Udev rules may be downloaded as a file and placed in the appropriate directory using these instructions:
+    
+    [99-platformio-udev.rules](https://docs.platformio.org/en/stable/core/installation/udev-rules.html)
+
+2.  Download rules into the correct directory
+
+    ```sh
+    curl -fsSL https://raw.githubusercontent.com/platformio/platformio-core/master/scripts/99-platformio-udev.rules | sudo tee /etc/udev/rules.d/99-platformio-udev.rules
+    ```
+
+3.  Restart udev management tool
+
+    ```sh
+    sudo service udev restart
+    ```
+
+4.  Ubuntu/Debian users may need to add own “username” to the “dialout” group
+
+    ```sh
+    sudo usermod -a -G dialout $USER
+    sudo usermod -a -G plugdev $USER
+    ```
+
+5.  After setting up rules and groups
+
+    You will need to log out and log back in again (or reboot) for the user group changes to take effect.
+    
+    After this file is installed, physically unplug and reconnect your board.
+
+
+## Python Code
 
 The Python code in this library may be installed in any number of ways, chose one.
 
@@ -104,13 +137,6 @@ The Python code in this library may be installed in any number of ways, chose on
 ## Windows
 
 
-### Drivers
-
-Download and install Windows driver:
-
-[Loadstar Sensors Windows Driver](https://www.loadstarsensors.com/drivers-for-usb-load-cells-and-load-cell-interfaces.html)
-
-
 ### Python Code
 
 The Python code in this library may be installed in any number of ways, chose one.
@@ -124,7 +150,7 @@ The Python code in this library may be installed in any number of ways, chose on
     ```
 
 
-<a id="org2895d01"></a>
+<a id="orgabcdda2"></a>
 
 # Development
 
@@ -188,6 +214,16 @@ exit
 
 ```sh
 make -f .metadata/Makefile upload
+```
+
+
+### Test direct device interaction using serial terminal
+
+```sh
+make -f .metadata/Makefile guix-dev-container-port-serial # PORT=/dev/ttyACM0
+# make -f .metadata/Makefile PORT=/dev/ttyACM1 guix-dev-container-port-serial
+? # help
+[C-a][C-x] # to exit
 ```
 
 

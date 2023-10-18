@@ -36,6 +36,7 @@
                          imagemagick))
     (propagated-inputs (list
                         ncurses
+                        python-pyserial
                         python-click))
     (home-page "")
     (synopsis "")

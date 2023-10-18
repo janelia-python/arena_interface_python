@@ -1,7 +1,7 @@
-"""Python async interface to Loadstar Sensors USB devices."""
+"""Python client interface to the Reiser lab PanelsController."""
 # This file is generated automatically from metadata
 # File edits may be overwritten!
-from loadstar_sensors_interface.__about__ import (
+from panels_controller_client.__about__ import (
     __author__,
     __copyright__,
     __email__,
@@ -10,4 +10,4 @@ from loadstar_sensors_interface.__about__ import (
     __url__,
     __version__)
 
-from .loadstar_sensors_interface import LoadstarSensorsInterface, DeviceInfo
+from .panels_controller_client import PanelsControllerClient

@@ -74,7 +74,7 @@ add:
 clean:
 	$(GUIX-DEV-CONTAINER) -- sh -c "git clean -xdf"
 
-PORT = /dev/ttyUSB0
+PORT = /dev/ttyACM0
 GUIX-DEV-CONTAINER-PORT = $(GUIX-DEV-SHELL) $(CONTAINER) --expose=$(PORT)
 GUIX-CONTAINER-PORT = $(GUIX-SHELL) $(CONTAINER) --expose=$(PORT)
 DOCKER-DEV-CONTAINER-PORT = $(DOCKER-DEV-IMAGE); docker run -it --device=$(PORT) panels_controller_client-dev
@@ -82,11 +82,7 @@ DOCKER-CONTAINER-PORT = $(DOCKER-IMAGE); docker run -it --device=$(PORT) panels_
 
 .PHONY: guix-dev-container-port-serial
 guix-dev-container-port-serial:
-	$(GUIX-DEV-CONTAINER-PORT) picocom -- picocom -b 9600 -f n -y n -d 8 -p 1 -c $(PORT)
-
-.PHONY: guix-dev-container-port-serial-hs
-guix-dev-container-port-serial-hs:
-	$(GUIX-DEV-CONTAINER-PORT) picocom -- picocom -b 230400 -f n -y n -d 8 -p 1 -c $(PORT)
+	$(GUIX-DEV-CONTAINER-PORT) picocom -- picocom -b 2000000 -f n -y n -d 8 -p 1 -c $(PORT)
 
 .PHONY: guix-dev-container-port-ipython
 guix-dev-container-port-ipython:

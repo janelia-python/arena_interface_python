@@ -41,11 +41,13 @@ Python client interface to the Reiser lab PanelsController.
 
 #+NAME: python-dependencies
 #+BEGIN_SRC text :exports none :noweb yes
+pyserial
 click
 #+END_SRC
 
 #+NAME: guix-dependencies
 #+BEGIN_SRC text :exports none :noweb yes
+python-pyserial
 python-click
 #+END_SRC
 
@@ -187,19 +189,12 @@ from panels_controller_client import PanelsControllerClient
 <<command-line-interface>> --help
 # Usage: <<command-line-interface>> [OPTIONS]
 
-#   Command line interface for loadstar sensors.
+#   Command line interface for panels controller client.
 
 # Options:
-#   -p, --port TEXT          Device name (e.g. /dev/ttyUSB0 on GNU/Linux or COM3
+#   -p, --port TEXT          Device name (e.g. /dev/ttyACM0 on GNU/Linux or COM3
 #                            on Windows)
-#   -H, --high-speed         Open serial port with high speed baudrate.
 #   --debug                  Print debugging information.
-#   -i, --info               Print the device info and exit
-#   -T, --tare               Tare before getting sensor values.
-#   -d, --duration INTEGER   Duration of sensor value measurements in seconds.
-#                            [default: 10]
-#   -u, --units TEXT         Sensor value units.  [default: gram]
-#   -f, --units-format TEXT  Units format.  [default: .1f]
 #   -h, --help               Show this message and exit.
 #+END_SRC
 
@@ -211,7 +206,53 @@ from panels_controller_client import PanelsControllerClient
 
 ** GNU/Linux
 
-*** Python Code
+**** Drivers
+
+GNU/Linux computers usually have all of the necessary drivers already installed,
+but users need the appropriate permissions to open the device and communicate
+with it.
+
+Udev is the GNU/Linux subsystem that detects when things are plugged into your
+computer.
+
+Udev may be used to detect when a device is plugged into the computer and
+automatically give permission to open that device.
+
+If you plug a sensor into your computer and attempt to open it and get an error
+such as: "FATAL: cannot open /dev/ttyACM0: Permission denied", then you need to
+install udev rules to give permission to open that device.
+
+Udev rules may be downloaded as a file and placed in the appropriate directory
+using these instructions:
+
+[[https://docs.platformio.org/en/stable/core/installation/udev-rules.html][99-platformio-udev.rules]]
+
+**** Download rules into the correct directory
+
+#+BEGIN_SRC sh :noweb yes
+curl -fsSL https://raw.githubusercontent.com/platformio/platformio-core/master/scripts/99-platformio-udev.rules | sudo tee /etc/udev/rules.d/99-platformio-udev.rules
+#+END_SRC
+
+**** Restart udev management tool
+
+#+BEGIN_SRC sh :noweb yes
+sudo service udev restart
+#+END_SRC
+
+**** Ubuntu/Debian users may need to add own “username” to the “dialout” group
+
+#+BEGIN_SRC sh :noweb yes
+sudo usermod -a -G dialout $USER
+sudo usermod -a -G plugdev $USER
+#+END_SRC
+
+**** After setting up rules and groups
+
+You will need to log out and log back in again (or reboot) for the user group changes to take effect.
+
+After this file is installed, physically unplug and reconnect your board.
+
+** Python Code
 
 The Python code in this library may be installed in any number of ways, chose one.
 
@@ -234,12 +275,6 @@ guix install <<guix-name>>
 #+END_SRC
 
 ** Windows
-
-*** Drivers
-
-Download and install Windows driver:
-
-[[https://www.loadstarsensors.com/drivers-for-usb-load-cells-and-load-cell-interfaces.html][Loadstar Sensors Windows Driver]]
 
 *** Python Code
 
@@ -306,6 +341,15 @@ exit
 
 #+BEGIN_SRC sh :noweb yes
 make -f .metadata/Makefile upload
+#+END_SRC
+
+*** Test direct device interaction using serial terminal
+
+#+BEGIN_SRC sh :noweb yes
+make -f .metadata/Makefile guix-dev-container-port-serial # PORT=/dev/ttyACM0
+# make -f .metadata/Makefile PORT=/dev/ttyACM1 guix-dev-container-port-serial
+? # help
+[C-a][C-x] # to exit
 #+END_SRC
 
 ** Docker
@@ -517,7 +561,7 @@ add:
 clean:
 	$(GUIX-DEV-CONTAINER) -- sh -c "git clean -xdf"
 
-PORT = /dev/ttyUSB0
+PORT = /dev/ttyACM0
 GUIX-DEV-CONTAINER-PORT = $(GUIX-DEV-SHELL) $(CONTAINER) --expose=$(PORT)
 GUIX-CONTAINER-PORT = $(GUIX-SHELL) $(CONTAINER) --expose=$(PORT)
 DOCKER-DEV-CONTAINER-PORT = $(DOCKER-DEV-IMAGE); docker run -it --device=$(PORT) <<python-package-name>>-dev
@@ -525,11 +569,7 @@ DOCKER-CONTAINER-PORT = $(DOCKER-IMAGE); docker run -it --device=$(PORT) <<pytho
 
 .PHONY: guix-dev-container-port-serial
 guix-dev-container-port-serial:
-	$(GUIX-DEV-CONTAINER-PORT) picocom -- picocom -b 9600 -f n -y n -d 8 -p 1 -c $(PORT)
-
-.PHONY: guix-dev-container-port-serial-hs
-guix-dev-container-port-serial-hs:
-	$(GUIX-DEV-CONTAINER-PORT) picocom -- picocom -b 230400 -f n -y n -d 8 -p 1 -c $(PORT)
+	$(GUIX-DEV-CONTAINER-PORT) picocom -- picocom -b 2000000 -f n -y n -d 8 -p 1 -c $(PORT)
 
 .PHONY: guix-dev-container-port-ipython
 guix-dev-container-port-ipython:
@@ -701,7 +741,7 @@ from <<python-package-name>>.__about__ import (
     __url__,
     __version__)
 
-from .<<python-package-name>> import LoadstarSensorsInterface, DeviceInfo
+from .<<python-package-name>> import PanelsControllerClient
 #+END_SRC
 
 #+NAME: license-text
