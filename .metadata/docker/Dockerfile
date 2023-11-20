@@ -1,5 +1,5 @@
-FROM panels_controller_client-dev
-WORKDIR /panels_controller_client_python
+FROM arena_host-dev
+WORKDIR /arena_host_python
 
 RUN pip install --user .
 

@@ -1,4 +1,4 @@
-"""Python client interface to the Reiser lab PanelsController."""
+"""Python host interface to the Reiser lab ArenaController."""
 # This file is generated automatically from metadata
 # File edits may be overwritten!
 from setuptools import setup

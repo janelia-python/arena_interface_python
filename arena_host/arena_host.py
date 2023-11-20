@@ -1,30 +1,30 @@
-"""Python client interface to the Reiser lab PanelsController."""
+"""Python host interface to the Reiser lab ArenaController."""
 import atexit
 import serial
 import socket
 
 
-class PanelsControllerClient():
-    """Python client interface to the Reiser lab PanelsController."""
+class ArenaHost():
+    """Python host interface to the Reiser lab ArenaController."""
     PORT = 62222
     def __init__(self, port=None, address=None, debug=False):
-        """Initialize a PanelsControllerClient instance."""
+        """Initialize a ArenaHost instance."""
         self._debug = debug
-        self._debug_print('PanelsControllerClient initializing...')
+        self._debug_print('ArenaHost initializing...')
         self._ser = None
 
         if port:
-            print('PanelsControllerClient serial interface')
+            print('ArenaHost serial interface')
             self._ser = serial.Serial(port, 2000000, timeout=1)
         elif address:
-            print('PanelsControllerClient socket interface')
+            print('ArenaHost socket interface')
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
                 try:
                     s.connect((address, PORT))
                 except ConnectionRefusedError:
                     print(f"G4 Host doesn't appear to be running on {HOST}:{PORT}")
 
-        self._debug_print('PanelsControllerClient initialized')
+        self._debug_print('ArenaHost initialized')
 
     @atexit.register
     def _atexit(self):

@@ -1,7 +1,7 @@
-"""Python client interface to the Reiser lab PanelsController."""
+"""Python host interface to the Reiser lab ArenaController."""
 # This file is generated automatically from metadata
 # File edits may be overwritten!
-from panels_controller_client.__about__ import (
+from arena_host.__about__ import (
     __author__,
     __copyright__,
     __email__,
@@ -10,4 +10,4 @@ from panels_controller_client.__about__ import (
     __url__,
     __version__)
 
-from .panels_controller_client import PanelsControllerClient
+from .arena_host import ArenaHost

@@ -1,2 +1,0 @@
-click==8.1.7
-pyserial==3.5

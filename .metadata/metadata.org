@@ -11,17 +11,17 @@
 
 #+NAME: python-package-name
 #+BEGIN_SRC text :exports none :noweb yes
-panels_controller_client
+arena_host
 #+END_SRC
 
 #+NAME: repository-name
 #+BEGIN_SRC text :exports none :noweb yes
-panels_controller_client_python
+arena_host_python
 #+END_SRC
 
 #+NAME: guix-name
 #+BEGIN_SRC text :exports none :noweb yes
-python-panels-controller-client
+python-arena-host
 #+END_SRC
 
 #+NAME: version
@@ -31,7 +31,7 @@ python-panels-controller-client
 
 #+NAME: description
 #+BEGIN_SRC text :exports none :noweb yes
-Python client interface to the Reiser lab PanelsController.
+Python host interface to the Reiser lab ArenaController.
 #+END_SRC
 
 #+NAME: python-version
@@ -53,12 +53,12 @@ python-click
 
 #+NAME: command-line-interface
 #+BEGIN_SRC text :exports none :noweb yes
-panels
+arena-host
 #+END_SRC
 
 #+NAME: references
 #+BEGIN_SRC text :exports none :noweb yes
-https://github.com/janelia-arduino/PanelsController
+https://github.com/janelia-arduino/ArenaController
 #+END_SRC
 
 #+NAME: creation-date
@@ -178,7 +178,7 @@ Python 3
 ** Python
 
 #+BEGIN_SRC python
-from panels_controller_client import PanelsControllerClient
+from arena_host import ArenaHost
 #+END_SRC
 
 ** Command Line
@@ -189,7 +189,7 @@ from panels_controller_client import PanelsControllerClient
 <<command-line-interface>> --help
 # Usage: <<command-line-interface>> [OPTIONS]
 
-#   Command line interface for panels controller client.
+#   Command line interface for arena host.
 
 # Options:
 #   -p, --port TEXT          Device name (e.g. /dev/ttyACM0 on GNU/Linux or COM3
@@ -390,7 +390,7 @@ exit
         (url "https://git.savannah.gnu.org/git/guix.git")
         (branch "master")
         (commit
-          "e80022ff3adde3184bed6758f604e3aa12942865")
+          "71b92466430acb8c91841522dc0eb7d766af4388")
         (introduction
           (make-channel-introduction
             "9edb3f66fd807b096b48283debdcddccfea34bad"
@@ -741,7 +741,7 @@ from <<python-package-name>>.__about__ import (
     __url__,
     __version__)
 
-from .<<python-package-name>> import PanelsControllerClient
+from .<<python-package-name>> import ArenaHost
 #+END_SRC
 
 #+NAME: license-text

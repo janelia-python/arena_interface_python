@@ -1,37 +1,37 @@
-- [About](#org5777b24)
-- [Example Usage](#orga9243ec)
-- [Installation](#org83d1ff7)
-- [Development](#orgabcdda2)
+- [About](#orgc6d9538)
+- [Example Usage](#org721018a)
+- [Installation](#orgc857b40)
+- [Development](#org4882867)
 
     <!-- This file is generated automatically from metadata -->
     <!-- File edits may be overwritten! -->
 
 
-<a id="org5777b24"></a>
+<a id="orgc6d9538"></a>
 
 # About
 
 ```markdown
-- Python Package Name: panels_controller_client
-- Description: Python client interface to the Reiser lab PanelsController.
+- Python Package Name: arena_host
+- Description: Python host interface to the Reiser lab ArenaController.
 - Version: 0.1.0
 - Python Version: 3.10
-- Release Date: 2023-10-18
+- Release Date: 2023-11-20
 - Creation Date: 2023-10-17
 - License: BSD-3-Clause
-- URL: https://github.com/janelia-pypi/panels_controller_client_python
+- URL: https://github.com/janelia-pypi/arena_host_python
 - Author: Peter Polidoro
 - Email: peter@polidoro.io
 - Copyright: 2023 Howard Hughes Medical Institute
 - References:
-  - https://github.com/janelia-arduino/PanelsController
+  - https://github.com/janelia-arduino/ArenaController
 - Dependencies:
   - pyserial
   - click
 ```
 
 
-<a id="orga9243ec"></a>
+<a id="org721018a"></a>
 
 # Example Usage
 
@@ -39,7 +39,7 @@
 ## Python
 
 ```python
-from panels_controller_client import PanelsControllerClient
+from arena_host import ArenaHost
 ```
 
 
@@ -49,10 +49,10 @@ from panels_controller_client import PanelsControllerClient
 ### help
 
 ```sh
-panels --help
-# Usage: panels [OPTIONS]
+arena-host --help
+# Usage: arena-host [OPTIONS]
 
-#   Command line interface for panels controller client.
+#   Command line interface for arena host.
 
 # Options:
 #   -p, --port TEXT          Device name (e.g. /dev/ttyACM0 on GNU/Linux or COM3
@@ -62,7 +62,7 @@ panels --help
 ```
 
 
-<a id="org83d1ff7"></a>
+<a id="orgc857b40"></a>
 
 # Installation
 
@@ -118,9 +118,9 @@ The Python code in this library may be installed in any number of ways, chose on
 1.  pip
 
     ```sh
-    python3 -m venv ~/venvs/panels_controller_client
-    source ~/venvs/panels_controller_client/bin/activate
-    pip install panels_controller_client
+    python3 -m venv ~/venvs/arena_host
+    source ~/venvs/arena_host/bin/activate
+    pip install arena_host
     ```
 
 2.  guix
@@ -130,7 +130,7 @@ The Python code in this library may be installed in any number of ways, chose on
     <https://github.com/guix-janelia/guix-janelia>
     
     ```sh
-    guix install python-panels-controller-client
+    guix install python-arena-host
     ```
 
 
@@ -144,13 +144,13 @@ The Python code in this library may be installed in any number of ways, chose on
 1.  pip
 
     ```sh
-    python3 -m venv C:\venvs\panels_controller_client
-    C:\venvs\panels_controller_client\Scripts\activate
-    pip install panels_controller_client
+    python3 -m venv C:\venvs\arena_host
+    C:\venvs\arena_host\Scripts\activate
+    pip install arena_host
     ```
 
 
-<a id="orgabcdda2"></a>
+<a id="org4882867"></a>
 
 # Development
 
@@ -158,8 +158,8 @@ The Python code in this library may be installed in any number of ways, chose on
 ## Clone Repository
 
 ```sh
-git clone git@github.com:janelia-pypi/panels_controller_client_python.git
-cd panels_controller_client_python
+git clone git@github.com:janelia-pypi/arena_host_python.git
+cd arena_host_python
 ```
 
 
@@ -197,7 +197,7 @@ exit
 
 ```sh
 make -f .metadata/Makefile guix-dev-container-ipython
-import panels_controller_client
+import arena_host
 exit
 ```
 
@@ -247,7 +247,7 @@ exit
 
 ```sh
 make -f .metadata/Makefile docker-dev-container-ipython
-import panels_controller_client
+import arena_host
 exit
 ```
 

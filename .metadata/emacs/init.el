@@ -34,4 +34,4 @@
 
 (setq enable-local-variables nil)
 (setq tangle-external-files t)
-(setq python-package-dir (concat "../" "panels_controller_client"))
+(setq python-package-dir (concat "../" "arena_host"))
