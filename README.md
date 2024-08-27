@@ -19,7 +19,7 @@
 - Release Date: 2023-11-20
 - Creation Date: 2023-10-17
 - License: BSD-3-Clause
-- URL: https://github.com/janelia-pypi/arena_host_python
+- URL: https://github.com/janelia-python/arena_host_python
 - Author: Peter Polidoro
 - Email: peter@polidoro.io
 - Copyright: 2023 Howard Hughes Medical Institute
@@ -66,7 +66,7 @@ arena-host --help
 
 # Installation
 
-<https://github.com/janelia-pypi/python_setup>
+<https://github.com/janelia-python/python_setup>
 
 
 ## GNU/Linux
@@ -158,7 +158,7 @@ The Python code in this library may be installed in any number of ways, chose on
 ## Clone Repository
 
 ```sh
-git clone git@github.com:janelia-pypi/arena_host_python.git
+git clone git@github.com:janelia-python/arena_host_python.git
 cd arena_host_python
 ```
 

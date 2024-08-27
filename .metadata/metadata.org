@@ -100,7 +100,7 @@ LICENSE
 
 #+NAME: repository-organization
 #+BEGIN_SRC text :exports none :noweb yes
-janelia-pypi
+janelia-python
 #+END_SRC
 
 #+NAME: forge
@@ -202,7 +202,7 @@ from arena_host import ArenaHost
 
 * Installation
 
-[[https://github.com/janelia-pypi/python_setup]]
+[[https://github.com/janelia-python/python_setup]]
 
 ** GNU/Linux
 
