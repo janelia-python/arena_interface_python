@@ -1,8 +1,8 @@
-"""Command line interface for the PanelsController client."""
+"""Command line interface for the ArenaHost."""
 import click
 import os
 
-from .panels_controller_client import PanelsControllerClient
+from .arena_host import ArenaHost
 
 
 CONTEXT_SETTINGS = dict(help_option_names=['-h', '--help'])
@@ -10,18 +10,13 @@ CONTEXT_SETTINGS = dict(help_option_names=['-h', '--help'])
 
 @click.command(context_settings=CONTEXT_SETTINGS,
                no_args_is_help=True)
-@click.option('-p', '--port',
-              default=None,
-              help='Device name (e.g. /dev/ttyUSB0 on GNU/Linux or COM3 on Windows)')
-@click.option('-a', '--address',
+@click.option('-i', '--ip-address',
               default=None,
               help='PanelsController IP address')
-def cli(port,
-        address):
-    """Command line interface for the PanelsController client."""
+def cli(ip_address):
+    """Command line interface for the ArenaHost."""
     # clear_screen()
-    dev = PanelsControllerClient(port=port,
-                                 debug=debug)
+    dev = ArenaHost(debug=debug)
 
 def clear_screen():
     """Clear command line for various operating systems."""

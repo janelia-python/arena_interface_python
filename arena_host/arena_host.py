@@ -1,51 +1,48 @@
 """Python host interface to the Reiser lab ArenaController."""
 import atexit
-import serial
 import socket
 
 
 class ArenaHost():
     """Python host interface to the Reiser lab ArenaController."""
     PORT = 62222
-    def __init__(self, port=None, address=None, debug=False):
+    def __init__(self, sock=None, debug=False):
         """Initialize a ArenaHost instance."""
         self._debug = debug
-        self._debug_print('ArenaHost initializing...')
-        self._ser = None
+        if sock is None:
+            self._socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        else:
+            self._socket = sock
 
-        if port:
-            print('ArenaHost serial interface')
-            self._ser = serial.Serial(port, 2000000, timeout=1)
-        elif address:
-            print('ArenaHost socket interface')
-            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-                try:
-                    s.connect((address, PORT))
-                except ConnectionRefusedError:
-                    print(f"G4 Host doesn't appear to be running on {HOST}:{PORT}")
+    def connect(self, ip_address):
+        """Connect to server at ip address."""
+        self._debug_print('ArenaHost connecting...')
+        self._socket.connect((ip_address, PORT))
+        self._debug_print('ArenaHost connected')
 
-        self._debug_print('ArenaHost initialized')
+    def _send(self, msg):
+        """Send message."""
+        if self._socket:
+            totalsent = 0
+            while totalsent < MSGLEN:
+                sent = self._socket.send(msg[totalsent:])
+                if sent == 0:
+                    raise RuntimeError("socket connection broken")
+                totalsent = totalsent + sent
+
+    def all_on(self):
+        """Turn all panels on."""
+        self._send(b'\x01\xff')
+
+    def all_off(self):
+        """Turn all panels off."""
+        self._send(b'\x01\x00')
 
     @atexit.register
     def _atexit(self):
-        if self._ser:
-            self._ser.close()
+        pass
 
     def _debug_print(self, to_print):
         """Print if debug is True."""
         if self._debug:
             print(to_print)
-
-    def _write(self, request):
-        """Write request to server."""
-        if self._ser:
-            self._ser.write(request)
-
-    def all_on(self):
-        """Turn all panels on."""
-        self._write(b'\x01\xff')
-        line = self._ser.readline()
-        print(line)
-        line = self._ser.readline()
-        print(line)
-
