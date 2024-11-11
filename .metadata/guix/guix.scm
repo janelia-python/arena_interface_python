@@ -9,6 +9,7 @@
  (gnu packages base)
  (gnu packages emacs)
  (gnu packages emacs-xyz)
+ (gnu packages admin)
  (gnu packages python-build)
  (gnu packages python-xyz)
  (gnu packages imagemagick)
@@ -33,7 +34,8 @@
                          python-wheel
                          python-twine
                          python-ipython
-                         imagemagick))
+                         imagemagick
+                         nmap))
     (propagated-inputs (list
                         ncurses
                         python-click))

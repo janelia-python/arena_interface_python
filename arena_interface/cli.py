@@ -4,6 +4,8 @@ import os
 
 from .arena_interface import ArenaInterface
 
+interface = ArenaInterface()
+
 
 CONTEXT_SETTINGS = dict(help_option_names=['-h', '--help'])
 
@@ -15,7 +17,8 @@ CONTEXT_SETTINGS = dict(help_option_names=['-h', '--help'])
               help='ArenaController IP address')
 def cli(ip_address):
     """Command line interface to the Reiser lab ArenaController."""
-    # clear_screen()
+    clear_screen()
+    interface.connect(ip_address)
 
 def clear_screen():
     """Clear command line for various operating systems."""

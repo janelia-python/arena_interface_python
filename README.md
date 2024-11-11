@@ -1,13 +1,13 @@
-- [About](#org46cf704)
-- [Example Usage](#org6ba2efe)
-- [Installation](#org596d0aa)
-- [Development](#org84e4c93)
+- [About](#org33ca4e7)
+- [Example Usage](#org917625b)
+- [Installation](#org4283b4e)
+- [Development](#orgccffc79)
 
     <!-- This file is generated automatically from metadata -->
     <!-- File edits may be overwritten! -->
 
 
-<a id="org46cf704"></a>
+<a id="org33ca4e7"></a>
 
 # About
 
@@ -30,7 +30,7 @@
 ```
 
 
-<a id="org6ba2efe"></a>
+<a id="org917625b"></a>
 
 # Example Usage
 
@@ -61,7 +61,7 @@ arena-interface --help
 ```
 
 
-<a id="org596d0aa"></a>
+<a id="org4283b4e"></a>
 
 # Installation
 
@@ -149,7 +149,7 @@ The Python code in this library may be installed in any number of ways, chose on
     ```
 
 
-<a id="org84e4c93"></a>
+<a id="orgccffc79"></a>
 
 # Development
 
