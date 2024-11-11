@@ -1,10 +1,10 @@
-"""Python host interface to the Reiser lab ArenaController."""
+"""Python interface to the Reiser lab ArenaController."""
 import atexit
 import socket
 
 
-class ArenaHost():
-    """Python host interface to the Reiser lab ArenaController."""
+class ArenaInterface():
+    """Python interface to the Reiser lab ArenaController."""
     PORT = 62222
     def __init__(self, sock=None, debug=False):
         """Initialize a ArenaHost instance."""

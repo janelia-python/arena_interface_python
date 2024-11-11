@@ -11,17 +11,17 @@
 
 #+NAME: python-package-name
 #+BEGIN_SRC text :exports none :noweb yes
-arena_host
+arena_interface
 #+END_SRC
 
 #+NAME: repository-name
 #+BEGIN_SRC text :exports none :noweb yes
-arena_host_python
+arena_interface_python
 #+END_SRC
 
 #+NAME: guix-name
 #+BEGIN_SRC text :exports none :noweb yes
-python-arena-host
+python-arena-interface
 #+END_SRC
 
 #+NAME: version
@@ -31,7 +31,7 @@ python-arena-host
 
 #+NAME: description
 #+BEGIN_SRC text :exports none :noweb yes
-Python host interface to the Reiser lab ArenaController.
+Python interface to the Reiser lab ArenaController.
 #+END_SRC
 
 #+NAME: python-version
@@ -41,19 +41,17 @@ Python host interface to the Reiser lab ArenaController.
 
 #+NAME: python-dependencies
 #+BEGIN_SRC text :exports none :noweb yes
-pyserial
 click
 #+END_SRC
 
 #+NAME: guix-dependencies
 #+BEGIN_SRC text :exports none :noweb yes
-python-pyserial
 python-click
 #+END_SRC
 
 #+NAME: command-line-interface
 #+BEGIN_SRC text :exports none :noweb yes
-arena-host
+arena-interface
 #+END_SRC
 
 #+NAME: references
@@ -178,7 +176,7 @@ Python 3
 ** Python
 
 #+BEGIN_SRC python
-from arena_host import ArenaHost
+from arena_interface import ArenaInterface
 #+END_SRC
 
 ** Command Line
@@ -189,7 +187,7 @@ from arena_host import ArenaHost
 <<command-line-interface>> --help
 # Usage: <<command-line-interface>> [OPTIONS]
 
-#   Command line interface for arena host.
+#   Command line interface to the Reiser lab ArenaController.
 
 # Options:
 #   -p, --port TEXT          Device name (e.g. /dev/ttyACM0 on GNU/Linux or COM3
@@ -390,7 +388,7 @@ exit
         (url "https://git.savannah.gnu.org/git/guix.git")
         (branch "master")
         (commit
-          "2a6d96425eea57dc6dd48a2bec16743046e32e06")
+          "2b781003a4372b793923de8b0f65815c4d5d75a7")
         (introduction
           (make-channel-introduction
             "9edb3f66fd807b096b48283debdcddccfea34bad"
@@ -747,7 +745,7 @@ from <<python-package-name>>.__about__ import (
     __url__,
     __version__)
 
-from .<<python-package-name>> import ArenaHost
+from .<<python-package-name>> import ArenaInterface
 #+END_SRC
 
 #+NAME: license-text

@@ -1,5 +1,5 @@
-FROM arena_host-dev
-WORKDIR /arena_host_python
+FROM arena_interface-dev
+WORKDIR /arena_interface_python
 
 RUN pip install --user .
 

@@ -1,37 +1,36 @@
-- [About](#orge47ba93)
-- [Example Usage](#orge2d2bb2)
-- [Installation](#orgdda0a15)
-- [Development](#org6ae35b6)
+- [About](#org46cf704)
+- [Example Usage](#org6ba2efe)
+- [Installation](#org596d0aa)
+- [Development](#org84e4c93)
 
     <!-- This file is generated automatically from metadata -->
     <!-- File edits may be overwritten! -->
 
 
-<a id="orge47ba93"></a>
+<a id="org46cf704"></a>
 
 # About
 
 ```markdown
-- Python Package Name: arena_host
-- Description: Python host interface to the Reiser lab ArenaController.
+- Python Package Name: arena_interface
+- Description: Python interface to the Reiser lab ArenaController.
 - Version: 0.1.0
 - Python Version: 3.10
-- Release Date: 2024-11-08
+- Release Date: 2024-11-11
 - Creation Date: 2023-10-17
 - License: BSD-3-Clause
-- URL: https://github.com/janelia-python/arena_host_python
+- URL: https://github.com/janelia-python/arena_interface_python
 - Author: Peter Polidoro
 - Email: peter@polidoro.io
 - Copyright: 2024 Howard Hughes Medical Institute
 - References:
   - https://github.com/janelia-arduino/ArenaController
 - Dependencies:
-  - pyserial
   - click
 ```
 
 
-<a id="orge2d2bb2"></a>
+<a id="org6ba2efe"></a>
 
 # Example Usage
 
@@ -39,7 +38,7 @@
 ## Python
 
 ```python
-from arena_host import ArenaHost
+from arena_interface import ArenaInterface
 ```
 
 
@@ -49,10 +48,10 @@ from arena_host import ArenaHost
 ### help
 
 ```sh
-arena-host --help
-# Usage: arena-host [OPTIONS]
+arena-interface --help
+# Usage: arena-interface [OPTIONS]
 
-#   Command line interface for arena host.
+#   Command line interface to the Reiser lab ArenaController.
 
 # Options:
 #   -p, --port TEXT          Device name (e.g. /dev/ttyACM0 on GNU/Linux or COM3
@@ -62,7 +61,7 @@ arena-host --help
 ```
 
 
-<a id="orgdda0a15"></a>
+<a id="org596d0aa"></a>
 
 # Installation
 
@@ -118,9 +117,9 @@ The Python code in this library may be installed in any number of ways, chose on
 1.  pip
 
     ```sh
-    python3 -m venv ~/venvs/arena_host
-    source ~/venvs/arena_host/bin/activate
-    pip install arena_host
+    python3 -m venv ~/venvs/arena_interface
+    source ~/venvs/arena_interface/bin/activate
+    pip install arena_interface
     ```
 
 2.  guix
@@ -130,7 +129,7 @@ The Python code in this library may be installed in any number of ways, chose on
     <https://github.com/guix-janelia/guix-janelia>
     
     ```sh
-    guix install python-arena-host
+    guix install python-arena-interface
     ```
 
 
@@ -144,13 +143,13 @@ The Python code in this library may be installed in any number of ways, chose on
 1.  pip
 
     ```sh
-    python3 -m venv C:\venvs\arena_host
-    C:\venvs\arena_host\Scripts\activate
-    pip install arena_host
+    python3 -m venv C:\venvs\arena_interface
+    C:\venvs\arena_interface\Scripts\activate
+    pip install arena_interface
     ```
 
 
-<a id="org6ae35b6"></a>
+<a id="org84e4c93"></a>
 
 # Development
 
@@ -158,8 +157,8 @@ The Python code in this library may be installed in any number of ways, chose on
 ## Clone Repository
 
 ```sh
-git clone git@github.com:janelia-python/arena_host_python.git
-cd arena_host_python
+git clone git@github.com:janelia-python/arena_interface_python.git
+cd arena_interface_python
 ```
 
 
@@ -197,7 +196,7 @@ exit
 
 ```sh
 make -f .metadata/Makefile guix-dev-container-ipython
-import arena_host
+import arena_interface
 exit
 ```
 
@@ -247,7 +246,7 @@ exit
 
 ```sh
 make -f .metadata/Makefile docker-dev-container-ipython
-import arena_host
+import arena_interface
 exit
 ```
 

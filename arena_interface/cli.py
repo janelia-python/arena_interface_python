@@ -2,7 +2,7 @@
 import click
 import os
 
-from .arena_host import ArenaHost
+from .arena_interface import ArenaInterface
 
 
 CONTEXT_SETTINGS = dict(help_option_names=['-h', '--help'])
@@ -12,11 +12,10 @@ CONTEXT_SETTINGS = dict(help_option_names=['-h', '--help'])
                no_args_is_help=True)
 @click.option('-i', '--ip-address',
               default=None,
-              help='PanelsController IP address')
+              help='ArenaController IP address')
 def cli(ip_address):
-    """Command line interface for the ArenaHost."""
+    """Command line interface to the Reiser lab ArenaController."""
     # clear_screen()
-    dev = ArenaHost(debug=debug)
 
 def clear_screen():
     """Clear command line for various operating systems."""
