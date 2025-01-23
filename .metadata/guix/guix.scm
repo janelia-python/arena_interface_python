@@ -38,7 +38,8 @@
                          nmap))
     (propagated-inputs (list
                         ncurses
-                        python-click))
+                        python-click
+                        python-pyserial))
     (home-page "")
     (synopsis "")
     (description "")

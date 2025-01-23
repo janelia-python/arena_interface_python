@@ -47,6 +47,7 @@ click
 #+NAME: guix-dependencies
 #+BEGIN_SRC text :exports none :noweb yes
 python-click
+python-pyserial
 #+END_SRC
 
 #+NAME: command-line-interface

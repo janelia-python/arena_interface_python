@@ -1,13 +1,13 @@
-- [About](#org33ca4e7)
-- [Example Usage](#org917625b)
-- [Installation](#org4283b4e)
-- [Development](#orgccffc79)
+- [About](#org3da771f)
+- [Example Usage](#org247022f)
+- [Installation](#org95aa9be)
+- [Development](#org2ceaa4a)
 
     <!-- This file is generated automatically from metadata -->
     <!-- File edits may be overwritten! -->
 
 
-<a id="org33ca4e7"></a>
+<a id="org3da771f"></a>
 
 # About
 
@@ -16,13 +16,13 @@
 - Description: Python interface to the Reiser lab ArenaController.
 - Version: 0.1.0
 - Python Version: 3.10
-- Release Date: 2024-11-11
+- Release Date: 2025-01-23
 - Creation Date: 2023-10-17
 - License: BSD-3-Clause
 - URL: https://github.com/janelia-python/arena_interface_python
 - Author: Peter Polidoro
 - Email: peter@polidoro.io
-- Copyright: 2024 Howard Hughes Medical Institute
+- Copyright: 2025 Howard Hughes Medical Institute
 - References:
   - https://github.com/janelia-arduino/ArenaController
 - Dependencies:
@@ -30,7 +30,7 @@
 ```
 
 
-<a id="org917625b"></a>
+<a id="org247022f"></a>
 
 # Example Usage
 
@@ -61,7 +61,7 @@ arena-interface --help
 ```
 
 
-<a id="org4283b4e"></a>
+<a id="org95aa9be"></a>
 
 # Installation
 
@@ -149,7 +149,7 @@ The Python code in this library may be installed in any number of ways, chose on
     ```
 
 
-<a id="orgccffc79"></a>
+<a id="org2ceaa4a"></a>
 
 # Development
 
