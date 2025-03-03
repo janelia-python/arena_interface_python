@@ -14,7 +14,8 @@
  (gnu packages python-xyz)
  (gnu packages imagemagick)
  (gnu packages version-control)
- (gnu packages ncurses))
+ (gnu packages ncurses)
+ (guix-janelia packages python-xyz))
 
 (define %source-dir (dirname (dirname (dirname (current-filename)))))
 
@@ -39,7 +40,8 @@
     (propagated-inputs (list
                         ncurses
                         python-click
-                        python-pyserial))
+                        python-pyserial
+                        python-nmap))
     (home-page "")
     (synopsis "")
     (description "")

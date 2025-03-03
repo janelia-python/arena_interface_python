@@ -42,12 +42,14 @@ Python interface to the Reiser lab ArenaController.
 #+NAME: python-dependencies
 #+BEGIN_SRC text :exports none :noweb yes
 click
+python3-nmap
 #+END_SRC
 
 #+NAME: guix-dependencies
 #+BEGIN_SRC text :exports none :noweb yes
 python-click
 python-pyserial
+python-nmap
 #+END_SRC
 
 #+NAME: command-line-interface
@@ -204,7 +206,31 @@ from arena_interface import ArenaInterface
 [[https://github.com/janelia-python/python_setup]]
 
 ** GNU/Linux
+*** Ethernet
 
+C-x C-f /sudo::/etc/network/interfaces
+
+#+BEGIN_SRC sh
+auto eth1
+
+iface eth1 inet static
+
+    address 192.168.10.2
+
+    netmask 255.255.255.0
+
+    gateway 192.168.10.1
+
+    dns-nameserver 8.8.8.8 8.8.4.4
+#+END_SRC
+
+#+BEGIN_SRC sh
+nmap -sn 192.168.10.0/24
+nmap -p 62222 192.168.10.3
+#+END_SRC
+
+
+*** Serial
 **** Drivers
 
 GNU/Linux computers usually have all of the necessary drivers already installed,
@@ -385,11 +411,17 @@ exit
 ;; This file is generated automatically from metadata
 ;; File edits may be overwritten!
 (list (channel
+        (name 'guix-janelia)
+        (url "https://github.com/guix-janelia/guix-janelia.git")
+        (branch "main")
+        (commit
+          "00269482830083a52441bbacda39e1fb70fb017f"))
+      (channel
         (name 'guix)
         (url "https://git.savannah.gnu.org/git/guix.git")
         (branch "master")
         (commit
-          "2b781003a4372b793923de8b0f65815c4d5d75a7")
+          "162179e787f4d196e809dd19c74b7ad8318d7ac1")
         (introduction
           (make-channel-introduction
             "9edb3f66fd807b096b48283debdcddccfea34bad"
@@ -414,7 +446,8 @@ exit
  (gnu packages python-xyz)
  (gnu packages imagemagick)
  (gnu packages version-control)
- (gnu packages ncurses))
+ (gnu packages ncurses)
+ (guix-janelia packages python-xyz))
 
 (define %source-dir (dirname (dirname (dirname (current-filename)))))
 

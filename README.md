@@ -1,13 +1,13 @@
-- [About](#org3da771f)
-- [Example Usage](#org247022f)
-- [Installation](#org95aa9be)
-- [Development](#org2ceaa4a)
+- [About](#orga3ed7bc)
+- [Example Usage](#orgaf8417d)
+- [Installation](#orgbaa3cc2)
+- [Development](#orga51f7d5)
 
     <!-- This file is generated automatically from metadata -->
     <!-- File edits may be overwritten! -->
 
 
-<a id="org3da771f"></a>
+<a id="orga3ed7bc"></a>
 
 # About
 
@@ -16,7 +16,7 @@
 - Description: Python interface to the Reiser lab ArenaController.
 - Version: 0.1.0
 - Python Version: 3.10
-- Release Date: 2025-01-23
+- Release Date: 2025-03-03
 - Creation Date: 2023-10-17
 - License: BSD-3-Clause
 - URL: https://github.com/janelia-python/arena_interface_python
@@ -27,10 +27,11 @@
   - https://github.com/janelia-arduino/ArenaController
 - Dependencies:
   - click
+  - python3-nmap
 ```
 
 
-<a id="org247022f"></a>
+<a id="orgaf8417d"></a>
 
 # Example Usage
 
@@ -61,7 +62,7 @@ arena-interface --help
 ```
 
 
-<a id="org95aa9be"></a>
+<a id="orgbaa3cc2"></a>
 
 # Installation
 
@@ -69,6 +70,33 @@ arena-interface --help
 
 
 ## GNU/Linux
+
+
+### Ethernet
+
+C-x C-f /sudo::/etc/network/interfaces
+
+```sh
+auto eth1
+
+iface eth1 inet static
+
+    address 192.168.10.2
+
+    netmask 255.255.255.0
+
+    gateway 192.168.10.1
+
+    dns-nameserver 8.8.8.8 8.8.4.4
+```
+
+```sh
+nmap -sn 192.168.10.0/24
+nmap -p 62222 192.168.10.3
+```
+
+
+### Serial
 
 1.  Drivers
 
@@ -149,7 +177,7 @@ The Python code in this library may be installed in any number of ways, chose on
     ```
 
 
-<a id="org2ceaa4a"></a>
+<a id="orga51f7d5"></a>
 
 # Development
 
