@@ -4,49 +4,52 @@ import os
 
 from .arena_interface import ArenaInterface
 
-interface = ArenaInterface()
-
-
-# CONTEXT_SETTINGS = dict(help_option_names=['-h', '--help'])
-# @click.command(context_settings=CONTEXT_SETTINGS,
-#                no_args_is_help=True)
-# @click.option('-i', '--ip-address',
-#               default=None,
-#               help='ArenaController IP address')
-# def cli(ip_address):
-#     """Command line interface to the Reiser lab ArenaController."""
-#     clear_screen()
-#     interface.connect(ip_address)
-
-def clear_screen():
-    """Clear command line for various operating systems."""
-    if (os.name == 'posix'):
-        os.system('clear')
-    else:
-        os.system('cls')
 
 @click.group()
-def cli():
-    pass
+@click.pass_context
+def cli(ctx):
+    ctx.obj = ArenaInterface()
 
-@click.command()
-def list_ports():
-    interface.list_serial_ports()
+@cli.command()
+@click.pass_obj
+def say_hello(ai):
+    ai.say_hello()
 
-cli.add_command(list_ports)
+@cli.command()
+@click.pass_obj
+def discover_arena_ip_address(ai):
+    arena_ip_address = ai.discover_arena_ip_address()
+    print(arena_ip_address)
 
-@click.command()
-def all_on():
-    interface.connect_serial()
-    interface.all_on()
-    interface.disconnect_serial()
+# def clear_screen():
+#     """Clear command line for various operating systems."""
+#     if (os.name == 'posix'):
+#         os.system('clear')
+#     else:
+#         os.system('cls')
 
-cli.add_command(all_on)
+# @click.group()
+# def cli():
+#     pass
 
-@click.command()
-def all_off():
-    interface.connect_serial()
-    interface.all_off()
-    interface.disconnect_serial()
+# @click.command()
+# def list_ports():
+#     interface.list_serial_ports()
 
-cli.add_command(all_off)
+# cli.add_command(list_ports)
+
+# @click.command()
+# def all_on():
+#     interface.connect_serial()
+#     interface.all_on()
+#     interface.disconnect_serial()
+
+# cli.add_command(all_on)
+
+# @click.command()
+# def all_off():
+#     interface.connect_serial()
+#     interface.all_off()
+#     interface.disconnect_serial()
+
+# cli.add_command(all_off)

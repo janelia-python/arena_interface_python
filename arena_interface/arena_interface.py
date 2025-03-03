@@ -2,16 +2,32 @@
 import os
 import atexit
 import serial
-# import socket
+import socket
+import nmap3
 
+PORT = 7777
+IP_RANGE = '192.168.10.0/24'
+
+def results_filter(pair):
+    key, value = pair
+    try:
+        ports = value['ports']
+
+        for port in ports:
+            if port['portid'] == str(PORT) and port['state'] == 'open':
+                return True
+    except (KeyError, TypeError) as e:
+        pass
+
+    return False
 
 class ArenaInterface():
     """Python interface to the Reiser lab ArenaController."""
-    # PORT = 62222
     BAUDRATE = 115200
     def __init__(self, sock=None, debug=True):
         """Initialize a ArenaHost instance."""
         self._debug = debug
+        self._nmap = nmap3.NmapHostDiscovery()
         # if sock is None:
         #     self._socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         # else:
@@ -29,18 +45,18 @@ class ArenaInterface():
 
     def _send(self, msg):
         """Send message."""
-        try:
-            self._write_data = msg.encode()
-        except UnicodeDecodeError:
-            self._write_data = msg
-        self._bytes_written = self._serial.write(self._write_data)
-        # if self._socket:
-        #     totalsent = 0
-        #     while totalsent < MSGLEN:
-        #         sent = self._socket.send(msg[totalsent:])
-        #         if sent == 0:
-        #             raise RuntimeError("socket connection broken")
-        #         totalsent = totalsent + sent
+        # try:
+        #     self._write_data = msg.encode()
+        # except UnicodeDecodeError:
+        #     self._write_data = msg
+        # self._bytes_written = self._serial.write(self._write_data)
+        if self._socket:
+            totalsent = 0
+            while totalsent < len(msg):
+                sent = self._socket.send(msg[totalsent:])
+                if sent == 0:
+                    raise RuntimeError("socket connection broken")
+                totalsent = totalsent + sent
 
     def connect_serial(self, port=None):
         """Connect to server through serial port."""
@@ -71,6 +87,12 @@ class ArenaInterface():
         serial_interface_ports = ['{0}dev{0}{1}'.format(os.path.sep, x) for x in serial_interface_ports]
         print(serial_interface_ports)
 
+    def discover_arena_ip_address(self):
+        results = self._nmap.nmap_portscan_only(IP_RANGE, args=f'-p {PORT}')
+        filtered_results = dict(filter(results_filter, results.items()))
+        self._arena_ip_address = list(filtered_results.keys())
+        return self._arena_ip_address
+
     def all_on(self):
         """Turn all panels on."""
         self._send('ALL_ON')
@@ -81,3 +103,5 @@ class ArenaInterface():
         self._send('ALL_OFF')
         # self._send(b'\x01\x00')
 
+    def say_hello(self):
+        print("hello!")
