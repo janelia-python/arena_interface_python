@@ -17,7 +17,7 @@ def say_hello(ai):
 
 @cli.command()
 @click.pass_obj
-def discover_arena_ip_address(ai):
+def discover_arena(ai):
     arena_ip_address = ai.discover_arena_ip_address()
     print(arena_ip_address)
 

@@ -5,7 +5,7 @@ import serial
 import socket
 import nmap3
 
-PORT = 7777
+PORT = 62222
 IP_RANGE = '192.168.10.0/24'
 
 def results_filter(pair):
@@ -28,6 +28,7 @@ class ArenaInterface():
         """Initialize a ArenaHost instance."""
         self._debug = debug
         self._nmap = nmap3.NmapHostDiscovery()
+        self._arena_ip_address = None
         # if sock is None:
         #     self._socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         # else:
@@ -88,9 +89,12 @@ class ArenaInterface():
         print(serial_interface_ports)
 
     def discover_arena_ip_address(self):
+        self._arena_ip_address = None
         results = self._nmap.nmap_portscan_only(IP_RANGE, args=f'-p {PORT}')
         filtered_results = dict(filter(results_filter, results.items()))
-        self._arena_ip_address = list(filtered_results.keys())
+        arena_ip_addresses = list(filtered_results.keys())
+        if len(arena_ip_addresses) == 1:
+            self._arena_ip_address = arena_ip_addresses[0]
         return self._arena_ip_address
 
     def all_on(self):
