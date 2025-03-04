@@ -6,6 +6,7 @@ import socket
 import nmap3
 
 PORT = 62222
+IP_ADDRESS = '192.168.10.62'
 IP_RANGE = '192.168.10.0/24'
 
 def results_filter(pair):
@@ -29,15 +30,14 @@ class ArenaInterface():
         self._debug = debug
         self._nmap = nmap3.NmapHostDiscovery()
         self._arena_ip_address = None
-        # if sock is None:
-        #     self._socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        # else:
-        #     self._socket = sock
+        if sock is None:
+            self._socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        else:
+            self._socket = sock
         atexit.register(self._exit)
 
     def _exit(self):
-        pass
-        # self._socket.close()
+        self._socket.close()
 
     def _debug_print(self, to_print):
         """Print if debug is True."""
@@ -59,27 +59,37 @@ class ArenaInterface():
                     raise RuntimeError("socket connection broken")
                 totalsent = totalsent + sent
 
-    def connect_serial(self, port=None):
-        """Connect to server through serial port."""
-        self._serial = serial.Serial()
-        self._debug_print('ArenaHost connecting serial port...')
-        self._serial.baudrate = self.BAUDRATE
-        self._serial.port = '/dev/ttyACM0'
-        self._serial.open()
-        if self._serial.is_open:
-            self._debug_print('ArenaHost connected through serial port')
+    # def connect_serial(self, port=None):
+    #     """Connect to server through serial port."""
+    #     self._serial = serial.Serial()
+    #     self._debug_print('ArenaHost connecting serial port...')
+    #     self._serial.baudrate = self.BAUDRATE
+    #     self._serial.port = '/dev/ttyACM0'
+    #     self._serial.open()
+    #     if self._serial.is_open:
+    #         self._debug_print('ArenaHost connected through serial port')
+    #     else:
+    #         self._debug_print('ArenaHost not connected!')
+
+    # def disconnect_serial(self, port=None):
+    #     """Disconnect serial port."""
+    #     self._serial.close()
+
+    def connect_ethernet(self, ip_address=None):
+        """Connect to server at ip address."""
+        if ip_address is None:
+            if self._arena_ip_address is None:
+                ip_address = self.discover_arena_ip_address
+            else:
+                ip_address = self._arena_ip_address
+        if ip_address is not None:
+            self._debug_print('Connecting to arena socket...')
+            self._socket.connect((ip_address, self.PORT))
+            self._debug_print('Arena socket connected')
+            return True
         else:
-            self._debug_print('ArenaHost not connected!')
-
-    def disconnect_serial(self, port=None):
-        """Disconnect serial port."""
-        self._serial.close()
-
-    # def connect(self, ip_address):
-    #     """Connect to server at ip address."""
-    #     self._debug_print('ArenaHost connecting...')
-    #     self._socket.connect((ip_address, self.PORT))
-    #     self._debug_print('ArenaHost connected')
+            self._debug_print('Arena IP address unknown')
+            return False
 
     def list_serial_ports(self):
         """List serial ports."""
@@ -99,13 +109,11 @@ class ArenaInterface():
 
     def all_on(self):
         """Turn all panels on."""
-        self._send('ALL_ON')
-        # self._send(b'\x01\xff')
+        self._send(b'\x01\xff')
 
     def all_off(self):
         """Turn all panels off."""
-        self._send('ALL_OFF')
-        # self._send(b'\x01\x00')
+        self._send(b'\x01\x00')
 
     def say_hello(self):
         print("hello!")

@@ -21,6 +21,16 @@ def discover_arena(ai):
     arena_ip_address = ai.discover_arena_ip_address()
     print(arena_ip_address)
 
+@cli.command()
+@click.pass_obj
+def connect_ethernet(ai):
+    ai.connect_ethernet()
+
+@cli.command()
+@click.pass_obj
+def all_on(ai):
+    ai.all_on()
+
 # def clear_screen():
 #     """Clear command line for various operating systems."""
 #     if (os.name == 'posix'):
