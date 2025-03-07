@@ -38,6 +38,7 @@
                          imagemagick
                          nmap))
     (propagated-inputs (list
+                        coreutils
                         ncurses
                         python-click
                         python-pyserial

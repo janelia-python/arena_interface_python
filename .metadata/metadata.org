@@ -180,6 +180,8 @@ Python 3
 
 #+BEGIN_SRC python
 from arena_interface import ArenaInterface
+
+ai = ArenaInterface()
 #+END_SRC
 
 ** Command Line
@@ -421,7 +423,7 @@ exit
         (url "https://git.savannah.gnu.org/git/guix.git")
         (branch "master")
         (commit
-          "162179e787f4d196e809dd19c74b7ad8318d7ac1")
+          "9bc4c9f521caab8aa8d88aa948a650945bb55838")
         (introduction
           (make-channel-introduction
             "9edb3f66fd807b096b48283debdcddccfea34bad"
@@ -470,6 +472,7 @@ exit
                          imagemagick
                          nmap))
     (propagated-inputs (list
+                        coreutils
                         ncurses
                         <<guix-dependencies>>))
     (home-page "")
@@ -544,6 +547,14 @@ DOCKER-DEV-IMAGE = docker build -f $(MAKEFILE_DIR)/docker/Dockerfile.dev -t <<py
 DOCKER-DEV-CONTAINER = $(DOCKER-DEV-IMAGE); docker run -it <<python-package-name>>-dev
 DOCKER-IMAGE = $(DOCKER-DEV-IMAGE); docker build -f $(MAKEFILE_DIR)/docker/Dockerfile -t <<python-package-name>> .
 DOCKER-CONTAINER = $(DOCKER-IMAGE); docker run -it <<python-package-name>>
+
+.PHONY: guix-shell
+guix-shell:
+	$(GUIX-SHELL)
+
+.PHONY: guix-dev-shell
+guix-dev-shell:
+	$(GUIX-DEV-SHELL)
 
 .PHONY: guix-dev-container
 guix-dev-container:

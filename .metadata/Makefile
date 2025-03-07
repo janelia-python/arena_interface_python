@@ -18,6 +18,14 @@ DOCKER-DEV-CONTAINER = $(DOCKER-DEV-IMAGE); docker run -it arena_interface-dev
 DOCKER-IMAGE = $(DOCKER-DEV-IMAGE); docker build -f $(MAKEFILE_DIR)/docker/Dockerfile -t arena_interface .
 DOCKER-CONTAINER = $(DOCKER-IMAGE); docker run -it arena_interface
 
+.PHONY: guix-shell
+guix-shell:
+	$(GUIX-SHELL)
+
+.PHONY: guix-dev-shell
+guix-dev-shell:
+	$(GUIX-DEV-SHELL)
+
 .PHONY: guix-dev-container
 guix-dev-container:
 	$(GUIX-DEV-CONTAINER)
