@@ -21,10 +21,10 @@ def discover_arena(ai):
     arena_ip_address = ai.discover_arena_ip_address()
     print(arena_ip_address)
 
-@cli.command()
-@click.pass_obj
-def connect_serial(ai):
-    ai.connect_serial()
+# @cli.command()
+# @click.pass_obj
+# def connect_serial(ai):
+#     ai.connect_serial()
 
 @cli.command()
 @click.pass_obj
@@ -41,15 +41,15 @@ def all_on(ai):
 def all_off(ai):
     ai.all_off()
 
-@cli.command()
-@click.pass_obj
-def all_on_str(ai):
-    ai.all_on_str()
+# @cli.command()
+# @click.pass_obj
+# def all_on_str(ai):
+#     ai.all_on_str()
 
-@cli.command()
-@click.pass_obj
-def all_off_str(ai):
-    ai.all_off_str()
+# @cli.command()
+# @click.pass_obj
+# def all_off_str(ai):
+#     ai.all_off_str()
 
 # def clear_screen():
 #     """Clear command line for various operating systems."""
