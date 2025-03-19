@@ -333,26 +333,26 @@ cd <<repository-name>>
 *** Edit metadata.org
 
 #+BEGIN_SRC sh :noweb yes
-make -f .metadata/Makefile metadata-edits
+make metadata-edits
 #+END_SRC
 
 *** Tangle metadata.org
 
 #+BEGIN_SRC sh :noweb yes
-make -f .metadata/Makefile metadata
+make metadata
 #+END_SRC
 
 *** Develop Python package
 
 #+BEGIN_SRC sh :noweb yes
-make -f .metadata/Makefile guix-dev-container
+make guix-dev-container
 exit
 #+END_SRC
 
 *** Test Python package using ipython shell
 
 #+BEGIN_SRC sh :noweb yes
-make -f .metadata/Makefile guix-dev-container-ipython
+make guix-dev-container-ipython
 import <<python-package-name>>
 exit
 #+END_SRC
@@ -360,21 +360,21 @@ exit
 *** Test Python package installation
 
 #+BEGIN_SRC sh :noweb yes
-make -f .metadata/Makefile guix-container
+make guix-container
 exit
 #+END_SRC
 
 *** Upload Python package to pypi
 
 #+BEGIN_SRC sh :noweb yes
-make -f .metadata/Makefile upload
+make upload
 #+END_SRC
 
 *** Test direct device interaction using serial terminal
 
 #+BEGIN_SRC sh :noweb yes
-make -f .metadata/Makefile guix-dev-container-port-serial # PORT=/dev/ttyACM0
-# make -f .metadata/Makefile PORT=/dev/ttyACM1 guix-dev-container-port-serial
+make guix-dev-container-port-serial # PORT=/dev/ttyACM0
+# make PORT=/dev/ttyACM1 guix-dev-container-port-serial
 ? # help
 [C-a][C-x] # to exit
 #+END_SRC
@@ -388,14 +388,14 @@ make -f .metadata/Makefile guix-dev-container-port-serial # PORT=/dev/ttyACM0
 *** Develop Python package
 
 #+BEGIN_SRC sh :noweb yes
-make -f .metadata/Makefile docker-dev-container
+make docker-dev-container
 exit
 #+END_SRC
 
 *** Test Python package using ipython shell
 
 #+BEGIN_SRC sh :noweb yes
-make -f .metadata/Makefile docker-dev-container-ipython
+make docker-dev-container-ipython
 import <<python-package-name>>
 exit
 #+END_SRC
@@ -403,7 +403,7 @@ exit
 *** Test Python package installation
 
 #+BEGIN_SRC sh :noweb yes
-make -f .metadata/Makefile docker-container
+make docker-container
 exit
 #+END_SRC
 
@@ -423,7 +423,7 @@ exit
         (url "https://git.savannah.gnu.org/git/guix.git")
         (branch "master")
         (commit
-          "9bc4c9f521caab8aa8d88aa948a650945bb55838")
+          "cbd2db98954739db1cdda208e1667c5d50976bf1")
         (introduction
           (make-channel-introduction
             "9edb3f66fd807b096b48283debdcddccfea34bad"
@@ -515,12 +515,6 @@ RUN pip install --user .
 CMD ["bash"]
 #+END_SRC
 
-#+BEGIN_SRC text :tangle .alias :exports none :noweb yes
-# This file is generated automatically from metadata.org
-# File edits may be overwritten!
-alias ,make=make\ -f\ .metadata/Makefile
-#+END_SRC
-
 #+BEGIN_SRC text :tangle ../Makefile :exports none :noweb yes
 # This file is generated automatically from .metadata.org
 # File edits may be overwritten!
@@ -602,7 +596,7 @@ package:
 
 .PHONY: twine
 twine:
-	$(GUIX-DEV-CONTAINER) --network --expose=$$HOME/.pypirc -- sh -c "twine upload dist/*"
+	$(GUIX-DEV-CONTAINER) --network --expose=$$HOME/.pypirc --expose=/etc/ssl/certs/ca-certificates.crt -- sh -c "twine upload dist/*"
 
 .PHONY: add
 add:

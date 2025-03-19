@@ -26,10 +26,10 @@ def discover_arena(ai):
 # def connect_serial(ai):
 #     ai.connect_serial()
 
-@cli.command()
-@click.pass_obj
-def connect_ethernet(ai):
-    ai.connect_ethernet()
+# @cli.command()
+# @click.pass_obj
+# def connect_ethernet(ai):
+#     ai.connect_ethernet()
 
 @cli.command()
 @click.pass_obj
