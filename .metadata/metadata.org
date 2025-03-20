@@ -43,12 +43,13 @@ Python interface to the Reiser lab ArenaController.
 #+BEGIN_SRC text :exports none :noweb yes
 click
 python3-nmap
+serial-interface
 #+END_SRC
 
 #+NAME: guix-dependencies
 #+BEGIN_SRC text :exports none :noweb yes
 python-click
-python-pyserial
+python-serial-interface
 python-nmap
 #+END_SRC
 
@@ -449,7 +450,8 @@ exit
  (gnu packages imagemagick)
  (gnu packages version-control)
  (gnu packages ncurses)
- (guix-janelia packages python-xyz))
+ (guix-janelia packages python-xyz)
+ (guix-janelia packages python-janelia))
 
 (define %source-dir (dirname (dirname (dirname (current-filename)))))
 
