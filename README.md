@@ -1,13 +1,13 @@
-- [About](#org8617366)
-- [Example Usage](#org36dc60a)
-- [Installation](#org7ee2bdf)
-- [Development](#orgd8af237)
+- [About](#org6f2bfb4)
+- [Example Usage](#org7e8790b)
+- [Installation](#org713d408)
+- [Development](#orgb0d2a7b)
 
     <!-- This file is generated automatically from metadata -->
     <!-- File edits may be overwritten! -->
 
 
-<a id="org8617366"></a>
+<a id="org6f2bfb4"></a>
 
 # About
 
@@ -16,7 +16,7 @@
 - Description: Python interface to the Reiser lab ArenaController.
 - Version: 0.1.0
 - Python Version: 3.10
-- Release Date: 2025-03-07
+- Release Date: 2025-03-21
 - Creation Date: 2023-10-17
 - License: BSD-3-Clause
 - URL: https://github.com/janelia-python/arena_interface_python
@@ -28,10 +28,11 @@
 - Dependencies:
   - click
   - python3-nmap
+  - serial-interface
 ```
 
 
-<a id="org36dc60a"></a>
+<a id="org7e8790b"></a>
 
 # Example Usage
 
@@ -64,7 +65,7 @@ arena-interface --help
 ```
 
 
-<a id="org7ee2bdf"></a>
+<a id="org713d408"></a>
 
 # Installation
 
@@ -179,7 +180,7 @@ The Python code in this library may be installed in any number of ways, chose on
     ```
 
 
-<a id="orgd8af237"></a>
+<a id="orgb0d2a7b"></a>
 
 # Development
 
@@ -203,21 +204,21 @@ cd arena_interface_python
 ### Edit metadata.org
 
 ```sh
-make -f .metadata/Makefile metadata-edits
+make metadata-edits
 ```
 
 
 ### Tangle metadata.org
 
 ```sh
-make -f .metadata/Makefile metadata
+make metadata
 ```
 
 
 ### Develop Python package
 
 ```sh
-make -f .metadata/Makefile guix-dev-container
+make guix-dev-container
 exit
 ```
 
@@ -225,7 +226,7 @@ exit
 ### Test Python package using ipython shell
 
 ```sh
-make -f .metadata/Makefile guix-dev-container-ipython
+make guix-dev-container-ipython
 import arena_interface
 exit
 ```
@@ -234,7 +235,7 @@ exit
 ### Test Python package installation
 
 ```sh
-make -f .metadata/Makefile guix-container
+make guix-container
 exit
 ```
 
@@ -242,15 +243,15 @@ exit
 ### Upload Python package to pypi
 
 ```sh
-make -f .metadata/Makefile upload
+make upload
 ```
 
 
 ### Test direct device interaction using serial terminal
 
 ```sh
-make -f .metadata/Makefile guix-dev-container-port-serial # PORT=/dev/ttyACM0
-# make -f .metadata/Makefile PORT=/dev/ttyACM1 guix-dev-container-port-serial
+make guix-dev-container-port-serial # PORT=/dev/ttyACM0
+# make PORT=/dev/ttyACM1 guix-dev-container-port-serial
 ? # help
 [C-a][C-x] # to exit
 ```
@@ -267,7 +268,7 @@ make -f .metadata/Makefile guix-dev-container-port-serial # PORT=/dev/ttyACM0
 ### Develop Python package
 
 ```sh
-make -f .metadata/Makefile docker-dev-container
+make docker-dev-container
 exit
 ```
 
@@ -275,7 +276,7 @@ exit
 ### Test Python package using ipython shell
 
 ```sh
-make -f .metadata/Makefile docker-dev-container-ipython
+make docker-dev-container-ipython
 import arena_interface
 exit
 ```
@@ -284,6 +285,6 @@ exit
 ### Test Python package installation
 
 ```sh
-make -f .metadata/Makefile docker-container
+make docker-container
 exit
 ```

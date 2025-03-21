@@ -9,7 +9,7 @@ MAKEFILE_DIR := $(notdir $(patsubst %/,%,$(dir $(MAKEFILE_PATH))))
 GUIX-TIME-MACHINE = guix time-machine -C $(MAKEFILE_DIR)/guix/channels.scm
 GUIX-SHELL = $(GUIX-TIME-MACHINE) -- shell -f $(MAKEFILE_DIR)/guix/guix.scm
 GUIX-DEV-SHELL = $(GUIX-TIME-MACHINE) -- shell -D -f $(MAKEFILE_DIR)/guix/guix.scm
-CONTAINER = --container --network --preserve='^DISPLAY$$' --preserve='^TERM$$'
+CONTAINER = --container --emulate-fhs --network --preserve='^DISPLAY$$' --preserve='^TERM$$'
 GUIX-CONTAINER = $(GUIX-SHELL) $(CONTAINER)
 GUIX-DEV-CONTAINER = $(GUIX-DEV-SHELL) $(CONTAINER)
 VENV-SHELL = rm -rf .venv; mkdir .venv; python3 -m venv .venv; source .venv/bin/activate
@@ -72,7 +72,7 @@ package:
 
 .PHONY: twine
 twine:
-	$(GUIX-DEV-CONTAINER) --network --expose=$$HOME/.pypirc -- sh -c "twine upload dist/*"
+	$(GUIX-DEV-CONTAINER) --network --expose=$$HOME/.pypirc --expose=/etc/ssl/certs/ca-certificates.crt -- sh -c "twine upload dist/*"
 
 .PHONY: add
 add:
@@ -82,23 +82,24 @@ add:
 clean:
 	$(GUIX-DEV-CONTAINER) -- sh -c "git clean -xdf"
 
+PORT-DIR = /dev
 PORT = /dev/ttyACM0
-GUIX-DEV-CONTAINER-PORT = $(GUIX-DEV-SHELL) $(CONTAINER) --expose=$(PORT)
-GUIX-CONTAINER-PORT = $(GUIX-SHELL) $(CONTAINER) --expose=$(PORT)
+GUIX-DEV-CONTAINER-PORTS = $(GUIX-DEV-SHELL) $(CONTAINER) --expose=$(PORT-DIR)
+GUIX-CONTAINER-PORTS = $(GUIX-SHELL) $(CONTAINER) --expose=$(PORT-DIR)
 DOCKER-DEV-CONTAINER-PORT = $(DOCKER-DEV-IMAGE); docker run -it --device=$(PORT) arena_interface-dev
 DOCKER-CONTAINER-PORT = $(DOCKER-IMAGE); docker run -it --device=$(PORT) arena_interface
 
-.PHONY: guix-dev-container-port-serial
-guix-dev-container-port-serial:
-	$(GUIX-DEV-CONTAINER-PORT) picocom -- picocom -b 2000000 -f n -y n -d 8 -p 1 -c $(PORT)
+.PHONY: guix-dev-container-ports-serial
+guix-dev-container-ports-serial:
+	$(GUIX-DEV-CONTAINER-PORTS) picocom -- picocom -b 2000000 -f n -y n -d 8 -p 1 -c $(PORT)
 
-.PHONY: guix-dev-container-port-ipython
-guix-dev-container-port-ipython:
-	$(GUIX-DEV-CONTAINER-PORT) -- ipython --no-autoindent
+.PHONY: guix-dev-container-ports-ipython
+guix-dev-container-ports-ipython:
+	$(GUIX-DEV-CONTAINER-PORTS) -- ipython --no-autoindent
 
-.PHONY: guix-container-port
-guix-container-port:
-	$(GUIX-CONTAINER-PORT) python-ipython --rebuild-cache
+.PHONY: guix-container-ports
+guix-container-ports:
+	$(GUIX-CONTAINER-PORTS) python-ipython --rebuild-cache
 
 .PHONY: docker-dev-container-port-ipython
 docker-dev-container-port-ipython:

@@ -4,14 +4,13 @@ import atexit
 import serial
 import socket
 import nmap3
-import time
+from serial_interface import SerialInterface, find_serial_interface_ports
 
 
 PORT = 62222
 IP_ADDRESS = '192.168.10.62'
 IP_RANGE = '192.168.10.0/24'
-BAUDRATE = 115200
-WRITE_READ_DELAY = 0.001
+SERIAL_BAUDRATE = 115200
 
 def results_filter(pair):
     key, value = pair
@@ -32,15 +31,18 @@ class ArenaInterface():
         """Initialize a ArenaHost instance."""
         self._debug = debug
         self._nmap = nmap3.NmapHostDiscovery()
-        # self._arena_ip_address = IP_ADDRESS
-        # self._socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        # self._serial = serial.Serial()
-        # atexit.register(self._exit)
+        self._socket = None
+        self._ethernet_mode = False
+        self._serial_interface = None
+        self._serial_mode = False
+        atexit.register(self._exit)
 
     def _exit(self):
-        pass
-        # self._socket.close()
-        # self._serial.close()
+        try:
+            self._socket.close()
+        except AttributeError:
+            pass
+        self.disconnect_serial()
 
     def _debug_print(self, *args):
         """Print if debug is True."""
@@ -48,19 +50,24 @@ class ArenaInterface():
             print(*args)
 
     def _send_and_receive(self, msg):
-        """Send message."""
+        """Send message and receive response."""
         self._debug_print('sending:')
         self._debug_print(msg)
+        if self._serial_mode:
+            self._debug_print(f'over serial port {self._serial_interface.port}')
+            read_data = self._serial_interface.write_read(msg)
+            self._debug_print('received:')
+            self._debug_print(read_data)
         # try:
         #     self._write_data = msg.encode()
         # except (UnicodeDecodeError, AttributeError):
         #     self._write_data = msg
         # self._debug_print(self._write_data)
         # self._bytes_written = self._serial.write(self._write_data)
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            s.connect((IP_ADDRESS, PORT))
-            s.sendall(msg)
-            data = s.recv(1024)
+        # with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        #     s.connect((IP_ADDRESS, PORT))
+        #     s.sendall(msg)
+        #     data = s.recv(1024)
 
     # def _receive(self):
     #     """Receive response."""
@@ -75,21 +82,28 @@ class ArenaInterface():
     #     response = self._receive()
     #     self._debug_print(response)
 
-    # def connect_serial(self, port=None):
-    #     """Connect to server through serial port."""
-    #     self._serial = serial.Serial()
-    #     self._debug_print('ArenaHost connecting serial port...')
-    #     self._serial.baudrate = BAUDRATE
-    #     self._serial.port = '/dev/ttyACM0'
-    #     self._serial.open()
-    #     if self._serial.is_open:
-    #         self._debug_print('ArenaHost connected through serial port')
-    #     else:
-    #         self._debug_print('ArenaHost not connected!')
+    def find_serial_ports(self):
+        return find_serial_interface_ports()
 
-    # def disconnect_serial(self, port=None):
-    #     """Disconnect serial port."""
-    #     self._serial.close()
+    def connect_serial(self, port=None):
+        """Connect to server through serial port."""
+        self._debug_print('ArenaHost connecting through a serial port...')
+        if port is not None:
+            self._serial_interface = SerialInterface(port=port)
+        else:
+            self._serial_interface = SerialInterface()
+        if self._serial_interface.is_open:
+            self._debug_print(f'ArenaHost connected through serial port {self._serial_interface.port}')
+            self._serial_mode = True
+        else:
+            self._debug_print('ArenaHost not connected!')
+
+    def disconnect_serial(self):
+        """Disconnect serial port."""
+        try:
+            self._serial_interface.close()
+        except AttributeError:
+            pass
 
     # def connect_ethernet(self, ip_address=None):
     #     """Connect to server at ip address."""
@@ -132,13 +146,13 @@ class ArenaInterface():
         """Turn all panels off."""
         self._send_and_receive(b'\x01\x00')
 
-    # def all_on_str(self):
-    #     """Turn all panels on."""
-    #     self._send_receive('ALL_ON')
+    def all_on_str(self):
+        """Turn all panels on."""
+        self._send_and_receive('ALL_ON')
 
-    # def all_off_str(self):
-    #     """Turn all panels off."""
-    #     self._send_receive('ALL_OFF')
+    def all_off_str(self):
+        """Turn all panels off."""
+        self._send_and_receive('ALL_OFF')
 
     def say_hello(self):
         print("hello!")
