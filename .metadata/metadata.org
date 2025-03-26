@@ -230,6 +230,7 @@ iface eth1 inet static
 #+BEGIN_SRC sh
 nmap -sn 192.168.10.0/24
 nmap -p 62222 192.168.10.62
+nmap -sV -p 62222 192.168.10.0/24
 #+END_SRC
 
 

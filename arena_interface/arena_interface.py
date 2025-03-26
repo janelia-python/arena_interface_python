@@ -1,13 +1,11 @@
 """Python interface to the Reiser lab ArenaController."""
-import os
 import atexit
-import serial
 import socket
 import nmap3
 from serial_interface import SerialInterface, find_serial_interface_ports
 
 
-PORT = 62222
+PORT = 6222
 IP_ADDRESS = '192.168.10.62'
 IP_RANGE = '192.168.10.0/24'
 SERIAL_BAUDRATE = 115200
@@ -34,15 +32,13 @@ class ArenaInterface():
         self._socket = None
         self._ethernet_mode = False
         self._serial_interface = None
-        self._serial_mode = False
         atexit.register(self._exit)
 
     def _exit(self):
         try:
-            self._socket.close()
+            self._serial_interface.close()
         except AttributeError:
             pass
-        self.disconnect_serial()
 
     def _debug_print(self, *args):
         """Print if debug is True."""
@@ -53,7 +49,13 @@ class ArenaInterface():
         """Send message and receive response."""
         self._debug_print('sending:')
         self._debug_print(msg)
-        if self._serial_mode:
+        if self._serial_interface is None:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                self._debug_print(f'to {IP_ADDRESS} port {PORT}')
+                s.connect((IP_ADDRESS, PORT))
+                s.sendall(msg)
+                data = s.recv(1024)
+        else:
             self._debug_print(f'over serial port {self._serial_interface.port}')
             read_data = self._serial_interface.write_read(msg)
             self._debug_print('received:')
@@ -64,10 +66,6 @@ class ArenaInterface():
         #     self._write_data = msg
         # self._debug_print(self._write_data)
         # self._bytes_written = self._serial.write(self._write_data)
-        # with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        #     s.connect((IP_ADDRESS, PORT))
-        #     s.sendall(msg)
-        #     data = s.recv(1024)
 
     # def _receive(self):
     #     """Receive response."""
