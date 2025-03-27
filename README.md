@@ -1,13 +1,13 @@
-- [About](#org6f2bfb4)
-- [Example Usage](#org7e8790b)
-- [Installation](#org713d408)
-- [Development](#orgb0d2a7b)
+- [About](#org44836c7)
+- [Example Usage](#org53833a8)
+- [Installation](#org9a5f549)
+- [Development](#orgacb665e)
 
     <!-- This file is generated automatically from metadata -->
     <!-- File edits may be overwritten! -->
 
 
-<a id="org6f2bfb4"></a>
+<a id="org44836c7"></a>
 
 # About
 
@@ -16,7 +16,7 @@
 - Description: Python interface to the Reiser lab ArenaController.
 - Version: 0.1.0
 - Python Version: 3.10
-- Release Date: 2025-03-21
+- Release Date: 2025-03-27
 - Creation Date: 2023-10-17
 - License: BSD-3-Clause
 - URL: https://github.com/janelia-python/arena_interface_python
@@ -32,7 +32,7 @@
 ```
 
 
-<a id="org7e8790b"></a>
+<a id="org53833a8"></a>
 
 # Example Usage
 
@@ -65,7 +65,7 @@ arena-interface --help
 ```
 
 
-<a id="org713d408"></a>
+<a id="org9a5f549"></a>
 
 # Installation
 
@@ -96,6 +96,12 @@ iface eth1 inet static
 ```sh
 nmap -sn 192.168.10.0/24
 nmap -p 62222 192.168.10.62
+nmap -sV -p 62222 192.168.10.0/24
+```
+
+```sh
+sudo -E guix shell nmap
+sudo -E guix shell wireshark -- wireshark
 ```
 
 
@@ -180,7 +186,7 @@ The Python code in this library may be installed in any number of ways, chose on
     ```
 
 
-<a id="orgb0d2a7b"></a>
+<a id="orgacb665e"></a>
 
 # Development
 

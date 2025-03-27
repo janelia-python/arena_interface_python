@@ -234,6 +234,7 @@ nmap -sV -p 62222 192.168.10.0/24
 #+END_SRC
 
 #+BEGIN_SRC sh
+sudo -E guix shell nmap
 sudo -E guix shell wireshark -- wireshark
 #+END_SRC
 

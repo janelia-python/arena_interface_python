@@ -1,14 +1,14 @@
 """Python interface to the Reiser lab ArenaController."""
-import atexit
+# import atexit
 import socket
 import nmap3
-from serial_interface import SerialInterface, find_serial_interface_ports
+# from serial_interface import SerialInterface, find_serial_interface_ports
 
 
 PORT = 62222
 IP_ADDRESS = '192.168.10.62'
 IP_RANGE = '192.168.10.0/24'
-SERIAL_BAUDRATE = 115200
+# SERIAL_BAUDRATE = 115200
 
 def results_filter(pair):
     key, value = pair
@@ -29,16 +29,16 @@ class ArenaInterface():
         """Initialize a ArenaHost instance."""
         self._debug = debug
         self._nmap = nmap3.NmapHostDiscovery()
-        self._socket = None
-        self._ethernet_mode = False
-        self._serial_interface = None
-        atexit.register(self._exit)
+        # self._socket = None
+        self._ethernet_mode = True
+        # self._serial_interface = None
+    #     atexit.register(self._exit)
 
-    def _exit(self):
-        try:
-            self._serial_interface.close()
-        except AttributeError:
-            pass
+    # def _exit(self):
+    #     try:
+    #         self._serial_interface.close()
+    #     except AttributeError:
+    #         pass
 
     def _debug_print(self, *args):
         """Print if debug is True."""
@@ -49,7 +49,7 @@ class ArenaInterface():
         """Send message and receive response."""
         self._debug_print('sending message:')
         self._debug_print(msg)
-        if self._serial_interface is None:
+        if self._ethernet_mode:
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
                 self._debug_print(f'to {IP_ADDRESS} port {PORT}')
                 s.settimeout(2)
@@ -59,9 +59,9 @@ class ArenaInterface():
                     response = s.recv(1024)
                 except TimeoutError:
                     response = None
-        else:
-            self._debug_print(f'over serial port {self._serial_interface.port}')
-            response = self._serial_interface.write_read(msg)
+        # else:
+        #     self._debug_print(f'over serial port {self._serial_interface.port}')
+        #     response = self._serial_interface.write_read(msg)
         self._debug_print('response:')
         self._debug_print(response)
         # try:
@@ -84,45 +84,28 @@ class ArenaInterface():
     #     response = self._receive()
     #     self._debug_print(response)
 
-    def find_serial_ports(self):
-        return find_serial_interface_ports()
+    # def find_serial_ports(self):
+    #     return find_serial_interface_ports()
 
-    def connect_serial(self, port=None):
-        """Connect to server through serial port."""
-        self._debug_print('ArenaHost connecting through a serial port...')
-        if port is not None:
-            self._serial_interface = SerialInterface(port=port)
-        else:
-            self._serial_interface = SerialInterface()
-        if self._serial_interface.is_open:
-            self._debug_print(f'ArenaHost connected through serial port {self._serial_interface.port}')
-            self._serial_mode = True
-        else:
-            self._debug_print('ArenaHost not connected!')
-
-    def disconnect_serial(self):
-        """Disconnect serial port."""
-        try:
-            self._serial_interface.close()
-        except AttributeError:
-            pass
-
-    # def connect_ethernet(self, ip_address=None):
-    #     """Connect to server at ip address."""
-    #     if ip_address is None:
-    #         if self._arena_ip_address is None:
-    #             ip_address = self.discover_arena_ip_address
-    #         else:
-    #             ip_address = self._arena_ip_address
-    #     if ip_address is not None:
-    #         self._debug_print('Connecting to arena socket...')
-    #         self._socket.connect((ip_address, PORT))
-    #         self._debug_print('Arena socket connected')
-    #         self._debug_print(self._socket.getpeername())
-    #         return True
+    # def connect_serial(self, port=None):
+    #     """Connect to server through serial port."""
+    #     self._debug_print('ArenaHost connecting through a serial port...')
+    #     if port is not None:
+    #         self._serial_interface = SerialInterface(port=port)
     #     else:
-    #         self._debug_print('Arena IP address unknown')
-    #         return False
+    #         self._serial_interface = SerialInterface()
+    #     if self._serial_interface.is_open:
+    #         self._debug_print(f'ArenaHost connected through serial port {self._serial_interface.port}')
+    #         self._serial_mode = True
+    #     else:
+    #         self._debug_print('ArenaHost not connected!')
+
+    # def disconnect_serial(self):
+    #     """Disconnect serial port."""
+    #     try:
+    #         self._serial_interface.close()
+    #     except AttributeError:
+    #         pass
 
     # def list_serial_ports(self):
     #     """List serial ports."""
