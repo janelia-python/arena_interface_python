@@ -2,6 +2,7 @@
 # import atexit
 import socket
 import nmap3
+import struct
 # from serial_interface import SerialInterface, find_serial_interface_ports
 
 
@@ -9,6 +10,7 @@ PORT = 62222
 IP_ADDRESS = '192.168.10.62'
 IP_RANGE = '192.168.10.0/24'
 # SERIAL_BAUDRATE = 115200
+PATTERN_HEADER_SIZE = 7
 
 def results_filter(pair):
     key, value = pair
@@ -47,8 +49,7 @@ class ArenaInterface():
 
     def _send_and_receive(self, msg):
         """Send message and receive response."""
-        self._debug_print('sending message:')
-        self._debug_print(msg)
+        self._debug_print('sending message: ', msg)
         if self._ethernet_mode:
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
                 self._debug_print(f'to {IP_ADDRESS} port {PORT}')
@@ -62,8 +63,7 @@ class ArenaInterface():
         # else:
         #     self._debug_print(f'over serial port {self._serial_interface.port}')
         #     response = self._serial_interface.write_read(msg)
-        self._debug_print('response:')
-        self._debug_print(response)
+        self._debug_print('response: ', response)
         # try:
         #     self._write_data = msg.encode()
         # except (UnicodeDecodeError, AttributeError):
@@ -135,6 +135,14 @@ class ArenaInterface():
         """Turn all panels on."""
         self._send_and_receive(b'\x01\xff')
 
+    def stream_pattern(self, path):
+        """Stream frame in pattern file."""
+        self._debug_print('pattern path: ', path)
+        with open(path, mode='rb') as f:
+            content = f.read()
+            pattern_header = struct.unpack('HHBBB', content[:PATTERN_HEADER_SIZE])
+            # self._send_and_receive('ALL_ON')
+
     def all_off_str(self):
         """Turn all panels off with string."""
         self._send_and_receive('ALL_OFF')
@@ -142,6 +150,3 @@ class ArenaInterface():
     def all_on_str(self):
         """Turn all panels on with string."""
         self._send_and_receive('ALL_ON')
-
-    def say_hello(self):
-        print("hello!")

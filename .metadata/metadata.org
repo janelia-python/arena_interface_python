@@ -238,6 +238,11 @@ sudo -E guix shell nmap
 sudo -E guix shell wireshark -- wireshark
 #+END_SRC
 
+#+BEGIN_SRC sh
+make guix-container
+arena-interface stream-pattern --path ./patterns/pat0003.pat
+#+END_SRC
+
 *** Serial
 **** Drivers
 
