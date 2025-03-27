@@ -5,7 +5,7 @@ import nmap3
 from serial_interface import SerialInterface, find_serial_interface_ports
 
 
-PORT = 6222
+PORT = 62222
 IP_ADDRESS = '192.168.10.62'
 IP_RANGE = '192.168.10.0/24'
 SERIAL_BAUDRATE = 115200
@@ -47,19 +47,23 @@ class ArenaInterface():
 
     def _send_and_receive(self, msg):
         """Send message and receive response."""
-        self._debug_print('sending:')
+        self._debug_print('sending message:')
         self._debug_print(msg)
         if self._serial_interface is None:
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
                 self._debug_print(f'to {IP_ADDRESS} port {PORT}')
+                s.settimeout(2)
                 s.connect((IP_ADDRESS, PORT))
                 s.sendall(msg)
-                data = s.recv(1024)
+                try:
+                    response = s.recv(1024)
+                except TimeoutError:
+                    response = None
         else:
             self._debug_print(f'over serial port {self._serial_interface.port}')
-            read_data = self._serial_interface.write_read(msg)
-            self._debug_print('received:')
-            self._debug_print(read_data)
+            response = self._serial_interface.write_read(msg)
+        self._debug_print('response:')
+        self._debug_print(response)
         # try:
         #     self._write_data = msg.encode()
         # except (UnicodeDecodeError, AttributeError):
@@ -136,21 +140,25 @@ class ArenaInterface():
             self._arena_ip_address = arena_ip_addresses[0]
         return self._arena_ip_address
 
+    def reset(self):
+        """Reset arena."""
+        self._send_and_receive(b'\x01\x01')
+
+    def all_off(self):
+        """Turn all panels off."""
+        self._send_and_receive(b'\x01\x30')
+
     def all_on(self):
         """Turn all panels on."""
         self._send_and_receive(b'\x01\xff')
 
-    def all_off(self):
-        """Turn all panels off."""
-        self._send_and_receive(b'\x01\x00')
+    def all_off_str(self):
+        """Turn all panels off with string."""
+        self._send_and_receive('ALL_OFF')
 
     def all_on_str(self):
-        """Turn all panels on."""
+        """Turn all panels on with string."""
         self._send_and_receive('ALL_ON')
-
-    def all_off_str(self):
-        """Turn all panels off."""
-        self._send_and_receive('ALL_OFF')
 
     def say_hello(self):
         print("hello!")
