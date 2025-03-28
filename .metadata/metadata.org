@@ -240,7 +240,7 @@ sudo -E guix shell wireshark -- wireshark
 
 #+BEGIN_SRC sh
 make guix-container
-arena-interface stream-pattern --path ./patterns/pat0003.pat
+arena-interface stream-pattern --path ./patterns/pat0004.pat
 #+END_SRC
 
 *** Serial

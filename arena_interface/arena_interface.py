@@ -11,6 +11,7 @@ IP_ADDRESS = '192.168.10.62'
 IP_RANGE = '192.168.10.0/24'
 # SERIAL_BAUDRATE = 115200
 PATTERN_HEADER_SIZE = 7
+BYTE_COUNT_PER_PANEL_GRAYSCALE = 132
 
 def results_filter(pair):
     key, value = pair
@@ -49,7 +50,7 @@ class ArenaInterface():
 
     def _send_and_receive(self, msg):
         """Send message and receive response."""
-        self._debug_print('sending message: ', msg)
+        # self._debug_print('sending message: ', msg)
         if self._ethernet_mode:
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
                 self._debug_print(f'to {IP_ADDRESS} port {PORT}')
@@ -140,8 +141,18 @@ class ArenaInterface():
         self._debug_print('pattern path: ', path)
         with open(path, mode='rb') as f:
             content = f.read()
-            pattern_header = struct.unpack('HHBBB', content[:PATTERN_HEADER_SIZE])
-            # self._send_and_receive('ALL_ON')
+            pattern_header = struct.unpack('<HHBBB', content[:PATTERN_HEADER_SIZE])
+            self._debug_print('pattern header: ', pattern_header)
+            frames = content[PATTERN_HEADER_SIZE:]
+            frame_count = pattern_header[0] * pattern_header[1]
+            self._debug_print('frame_count: ', frame_count)
+            frame = frames[:len(frames)//frame_count]
+            data_len = len(frame)
+            self._debug_print('data_len: ', data_len)
+            frame_header = struct.pack('<BHHH', 0x32, data_len, 0,  0)
+            message = frame_header + frame
+            self._debug_print('len(message): ', len(message))
+            self._send_and_receive(message)
 
     def all_off_str(self):
         """Turn all panels off with string."""
