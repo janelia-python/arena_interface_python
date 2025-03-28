@@ -1,13 +1,13 @@
-- [About](#org7ce0431)
-- [Example Usage](#orgb670ea4)
-- [Installation](#orgb7a0798)
-- [Development](#org34ced04)
+- [About](#org4e18f4d)
+- [Example Usage](#org5a2c708)
+- [Installation](#org6ceb49c)
+- [Development](#org600c72b)
 
     <!-- This file is generated automatically from metadata -->
     <!-- File edits may be overwritten! -->
 
 
-<a id="org7ce0431"></a>
+<a id="org4e18f4d"></a>
 
 # About
 
@@ -27,12 +27,10 @@
   - https://github.com/janelia-arduino/ArenaController
 - Dependencies:
   - click
-  - python3-nmap
-  - serial-interface
 ```
 
 
-<a id="orgb670ea4"></a>
+<a id="org5a2c708"></a>
 
 # Example Usage
 
@@ -65,7 +63,7 @@ arena-interface --help
 ```
 
 
-<a id="orgb7a0798"></a>
+<a id="org6ceb49c"></a>
 
 # Installation
 
@@ -191,7 +189,7 @@ The Python code in this library may be installed in any number of ways, chose on
     ```
 
 
-<a id="org34ced04"></a>
+<a id="org600c72b"></a>
 
 # Development
 

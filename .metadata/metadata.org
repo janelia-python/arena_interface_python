@@ -42,15 +42,11 @@ Python interface to the Reiser lab ArenaController.
 #+NAME: python-dependencies
 #+BEGIN_SRC text :exports none :noweb yes
 click
-python3-nmap
-serial-interface
 #+END_SRC
 
 #+NAME: guix-dependencies
 #+BEGIN_SRC text :exports none :noweb yes
 python-click
-python-serial-interface
-python-nmap
 #+END_SRC
 
 #+NAME: command-line-interface

@@ -41,9 +41,7 @@
     (propagated-inputs (list
                         coreutils
                         ncurses
-                        python-click
-                        python-serial-interface
-                        python-nmap))
+                        python-click))
     (home-page "")
     (synopsis "")
     (description "")
