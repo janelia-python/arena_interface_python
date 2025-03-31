@@ -60,6 +60,7 @@ class ArenaInterface():
             frame_header = struct.pack('<BHHH', 0x32, data_len, 0,  0)
             message = frame_header + frame
             self._debug_print('len(message): ', len(message))
+            # self._debug_print('message: ', message)
             self._send_and_receive(message)
 
     def all_off_str(self):
