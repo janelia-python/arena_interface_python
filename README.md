@@ -1,13 +1,13 @@
-- [About](#org4e18f4d)
-- [Example Usage](#org5a2c708)
-- [Installation](#org6ceb49c)
-- [Development](#org600c72b)
+- [About](#orgdadc830)
+- [Example Usage](#org77bfeab)
+- [Installation](#org704a4e6)
+- [Development](#orgd68ab26)
 
     <!-- This file is generated automatically from metadata -->
     <!-- File edits may be overwritten! -->
 
 
-<a id="org4e18f4d"></a>
+<a id="orgdadc830"></a>
 
 # About
 
@@ -16,7 +16,7 @@
 - Description: Python interface to the Reiser lab ArenaController.
 - Version: 0.1.0
 - Python Version: 3.10
-- Release Date: 2025-03-28
+- Release Date: 2025-04-01
 - Creation Date: 2023-10-17
 - License: BSD-3-Clause
 - URL: https://github.com/janelia-python/arena_interface_python
@@ -30,7 +30,7 @@
 ```
 
 
-<a id="org5a2c708"></a>
+<a id="org77bfeab"></a>
 
 # Example Usage
 
@@ -51,19 +51,32 @@ ai = ArenaInterface()
 
 ```sh
 arena-interface --help
-# Usage: arena-interface [OPTIONS]
+# Usage: arena-interface [OPTIONS] COMMAND [ARGS]...
 
-#   Command line interface to the Reiser lab ArenaController.
+Options:
+  --help  Show this message and exit.
 
-# Options:
-#   -p, --port TEXT          Device name (e.g. /dev/ttyACM0 on GNU/Linux or COM3
-#                            on Windows)
-#   --debug                  Print debugging information.
-#   -h, --help               Show this message and exit.
+Commands:
+  all-off
+  all-on
+  reset
+  stream-frame
+```
+
+```sh
+arena-interface stream-frame --help
+# Usage: arena-interface [OPTIONS] PATH FRAME_INDEX
+
+Options:
+  --help  Show this message and exit.
+```
+
+```sh
+arena-interface stream-frame ./patterns/pat0004.pat 0
 ```
 
 
-<a id="org6ceb49c"></a>
+<a id="org704a4e6"></a>
 
 # Installation
 
@@ -104,7 +117,6 @@ sudo -E guix shell wireshark -- wireshark
 
 ```sh
 make guix-container
-arena-interface stream-pattern --path ./patterns/pat0004.pat
 ```
 
 
@@ -189,7 +201,7 @@ The Python code in this library may be installed in any number of ways, chose on
     ```
 
 
-<a id="org600c72b"></a>
+<a id="orgd68ab26"></a>
 
 # Development
 

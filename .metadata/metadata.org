@@ -187,18 +187,30 @@ ai = ArenaInterface()
 
 #+BEGIN_SRC sh :noweb yes
 <<command-line-interface>> --help
-# Usage: <<command-line-interface>> [OPTIONS]
+# Usage: <<command-line-interface>> [OPTIONS] COMMAND [ARGS]...
 
-#   Command line interface to the Reiser lab ArenaController.
+Options:
+  --help  Show this message and exit.
 
-# Options:
-#   -p, --port TEXT          Device name (e.g. /dev/ttyACM0 on GNU/Linux or COM3
-#                            on Windows)
-#   --debug                  Print debugging information.
-#   -h, --help               Show this message and exit.
+Commands:
+  all-off
+  all-on
+  reset
+  stream-frame
 #+END_SRC
 
-#+RESULTS:
+#+BEGIN_SRC sh :noweb yes
+<<command-line-interface>> stream-frame --help
+# Usage: <<command-line-interface>> [OPTIONS] PATH FRAME_INDEX
+
+Options:
+  --help  Show this message and exit.
+#+END_SRC
+
+#+BEGIN_SRC sh
+arena-interface stream-frame ./patterns/pat0004.pat 0
+#+END_SRC
+
 
 * Installation
 
@@ -236,7 +248,6 @@ sudo -E guix shell wireshark -- wireshark
 
 #+BEGIN_SRC sh
 make guix-container
-arena-interface stream-pattern --path ./patterns/pat0004.pat
 #+END_SRC
 
 *** Serial

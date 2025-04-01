@@ -12,12 +12,6 @@ def cli(ctx):
 
 @cli.command()
 @click.pass_obj
-def discover_arena(ai):
-    arena_ip_address = ai.discover_arena_ip_address()
-    print(arena_ip_address)
-
-@cli.command()
-@click.pass_obj
 def reset(ai):
     ai.reset()
 
@@ -32,8 +26,9 @@ def all_on(ai):
     ai.all_on()
 
 @cli.command()
-@click.option('--path', type=click.Path(exists=True), help='Path to the file')
+@click.argument('path', nargs=1, type=click.Path(exists=True))
+@click.argument('frame-index', nargs=1, type=int)
 @click.pass_obj
-def stream_pattern(ai, path):
+def stream_frame(ai, path, frame_index):
     abs_path = Path(path).absolute()
-    ai.stream_pattern(abs_path)
+    ai.stream_frame(abs_path, frame_index)

@@ -7,6 +7,7 @@ PORT = 62222
 IP_ADDRESS = '192.168.10.62'
 PATTERN_HEADER_SIZE = 7
 BYTE_COUNT_PER_PANEL_GRAYSCALE = 132
+REPEAT_LIMIT = 4
 
 class ArenaInterface():
     """Python interface to the Reiser lab ArenaController."""
@@ -21,15 +22,20 @@ class ArenaInterface():
 
     def _send_and_receive(self, msg):
         """Send message and receive response."""
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            self._debug_print(f'to {IP_ADDRESS} port {PORT}')
-            s.settimeout(2)
-            s.connect((IP_ADDRESS, PORT))
-            s.sendall(msg)
-            try:
-                response = s.recv(1024)
-            except TimeoutError:
-                response = None
+        repeat_count = 0
+        while repeat_count < REPEAT_LIMIT:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                self._debug_print(f'to {IP_ADDRESS} port {PORT}')
+                s.settimeout(2)
+                try:
+                    s.connect((IP_ADDRESS, PORT))
+                    s.sendall(msg)
+                    response = s.recv(1024)
+                    break
+                except (TimeoutError, OSError):
+                    self._debug_print('socket timed out')
+                    response = None
+                    repeat_count += 1
         self._debug_print('response: ', response)
 
     def reset(self):
@@ -44,7 +50,7 @@ class ArenaInterface():
         """Turn all panels on."""
         self._send_and_receive(b'\x01\xff')
 
-    def stream_pattern(self, path):
+    def stream_frame(self, path, frame_index):
         """Stream frame in pattern file."""
         self._debug_print('pattern path: ', path)
         with open(path, mode='rb') as f:
@@ -54,10 +60,21 @@ class ArenaInterface():
             frames = content[PATTERN_HEADER_SIZE:]
             frame_count = pattern_header[0] * pattern_header[1]
             self._debug_print('frame_count: ', frame_count)
-            frame = frames[:len(frames)//frame_count]
+            if frame_index < 0:
+                frame_index = 0
+            if frame_index > (frame_count - 1):
+                frame_index = frame_count - 1
+            self._debug_print('frame_index: ', frame_index)
+            frame_len = len(frames)//frame_count
+            frame_start = frame_index * frame_len
+            # self._debug_print('frame_start: ', frame_start)
+            frame_end = frame_start + frame_len
+            # self._debug_print('frame_end: ', frame_end)
+            frame = frames[frame_start:frame_end]
             data_len = len(frame)
-            self._debug_print('data_len: ', data_len)
+            # self._debug_print('data_len: ', data_len)
             frame_header = struct.pack('<BHHH', 0x32, data_len, 0,  0)
+            self._debug_print('frame header: ', frame_header)
             message = frame_header + frame
             self._debug_print('len(message): ', len(message))
             # self._debug_print('message: ', message)
