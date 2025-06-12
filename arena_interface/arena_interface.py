@@ -20,8 +20,10 @@ class ArenaInterface():
         if self._debug:
             print(*args)
 
-    def _send_and_receive(self, msg):
-        """Send message and receive response."""
+    def _send_and_receive(self, cmd):
+        """Send command and receive response."""
+        if len(cmd) < 32:
+            self._debug_print('command: ', cmd)
         repeat_count = 0
         while repeat_count < REPEAT_LIMIT:
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
@@ -29,7 +31,7 @@ class ArenaInterface():
                 s.settimeout(2)
                 try:
                     s.connect((IP_ADDRESS, PORT))
-                    s.sendall(msg)
+                    s.sendall(cmd)
                     response = s.recv(1024)
                     break
                 except (TimeoutError, OSError):
@@ -79,6 +81,11 @@ class ArenaInterface():
             self._debug_print('len(message): ', len(message))
             # self._debug_print('message: ', message)
             self._send_and_receive(message)
+
+    def set_frame_rate(self, frame_rate):
+        """Set frame rate in Hz."""
+        cmd_bytes = struct.pack('<BBH', 0x03, 0x12, frame_rate)
+        self._send_and_receive(cmd_bytes)
 
     def all_off_str(self):
         """Turn all panels off with string."""
