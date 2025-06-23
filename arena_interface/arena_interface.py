@@ -40,11 +40,37 @@ class ArenaInterface():
                     repeat_count += 1
         self._debug_print('response: ', response)
 
-    def reset(self):
+    def all_off(self):
+        """Turn all panels off."""
+        self._send_and_receive(b'\x01\x00')
+
+    def display_reset(self):
         """Reset arena."""
         self._send_and_receive(b'\x01\x01')
 
-    def all_off(self):
+    def trial_params(self, pattern_id, frame_rate):
+        """Set trial parameters."""
+        control_mode = 0xAA
+        init_pos = 0x04
+        gain = 0x10
+        runtime_duration = 0xDD
+        cmd_bytes = struct.pack('<BBBHHHHH',
+                                0x0c,
+                                0x08,
+                                control_mode,
+                                pattern_id,
+                                frame_rate,
+                                init_pos,
+                                gain,
+                                runtime_duration)
+        self._send_and_receive(cmd_bytes)
+
+    def set_frame_rate(self, frame_rate):
+        """Set frame rate in Hz."""
+        cmd_bytes = struct.pack('<BBH', 0x03, 0x12, frame_rate)
+        self._send_and_receive(cmd_bytes)
+
+    def stop_display(self):
         """Turn all panels off."""
         self._send_and_receive(b'\x01\x30')
 
@@ -81,11 +107,6 @@ class ArenaInterface():
             self._debug_print('len(message): ', len(message))
             # self._debug_print('message: ', message)
             self._send_and_receive(message)
-
-    def set_frame_rate(self, frame_rate):
-        """Set frame rate in Hz."""
-        cmd_bytes = struct.pack('<BBH', 0x03, 0x12, frame_rate)
-        self._send_and_receive(cmd_bytes)
 
     def all_off_str(self):
         """Turn all panels off with string."""
