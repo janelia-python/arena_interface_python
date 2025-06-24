@@ -215,6 +215,9 @@ arena-interface stream-frame ./patterns/pat0004.pat 0
 arena-interface set-frame-rate 175
 #+END_SRC
 
+#+BEGIN_SRC sh
+arena-interface trial-params 3 200
+#+END_SRC
 
 * Installation
 
