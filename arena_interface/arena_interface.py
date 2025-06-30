@@ -65,9 +65,9 @@ class ArenaInterface():
                                 runtime_duration)
         self._send_and_receive(cmd_bytes)
 
-    def set_frame_rate(self, frame_rate):
-        """Set frame rate in Hz."""
-        cmd_bytes = struct.pack('<BBH', 0x03, 0x12, frame_rate)
+    def set_refresh_rate(self, refresh_rate):
+        """Set refresh rate in Hz."""
+        cmd_bytes = struct.pack('<BBH', 0x03, 0x12, refresh_rate)
         self._send_and_receive(cmd_bytes)
 
     def stop_display(self):

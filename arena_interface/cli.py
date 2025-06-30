@@ -28,10 +28,10 @@ def trial_params(ai, pattern_id, frame_rate):
     ai.trial_params(pattern_id, frame_rate)
 
 @cli.command()
-@click.argument('frame-rate', nargs=1, type=int)
+@click.argument('refresh-rate', nargs=1, type=int)
 @click.pass_obj
-def set_frame_rate(ai, frame_rate):
-    ai.set_frame_rate(frame_rate)
+def set_refresh_rate(ai, refresh_rate):
+    ai.set_refresh_rate(refresh_rate)
 
 @cli.command()
 @click.pass_obj
