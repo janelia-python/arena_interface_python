@@ -67,7 +67,7 @@ class ArenaInterface():
 
     def set_refresh_rate(self, refresh_rate):
         """Set refresh rate in Hz."""
-        cmd_bytes = struct.pack('<BBH', 0x03, 0x12, refresh_rate)
+        cmd_bytes = struct.pack('<BBH', 0x03, 0x16, refresh_rate)
         self._send_and_receive(cmd_bytes)
 
     def stop_display(self):
