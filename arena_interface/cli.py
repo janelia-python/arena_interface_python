@@ -35,11 +35,6 @@ def set_refresh_rate(ai, refresh_rate):
 
 @cli.command()
 @click.pass_obj
-def stop_display(ai):
-    ai.stop_display()
-
-@cli.command()
-@click.pass_obj
 def all_on(ai):
     ai.all_on()
 
