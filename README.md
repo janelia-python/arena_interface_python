@@ -1,13 +1,13 @@
-- [About](#org28280ad)
-- [Example Usage](#orgb2676a8)
-- [Installation](#org769471b)
-- [Development](#orga8c075d)
+- [About](#org538bfbc)
+- [Example Usage](#org7230bb6)
+- [Installation](#org36100c9)
+- [Development](#orgfc72ca7)
 
     <!-- This file is generated automatically from metadata -->
     <!-- File edits may be overwritten! -->
 
 
-<a id="org28280ad"></a>
+<a id="org538bfbc"></a>
 
 # About
 
@@ -16,7 +16,7 @@
 - Description: Python interface to the Reiser lab ArenaController.
 - Version: 0.1.0
 - Python Version: 3.11
-- Release Date: 2025-06-30
+- Release Date: 2025-07-03
 - Creation Date: 2023-10-17
 - License: BSD-3-Clause
 - URL: https://github.com/janelia-python/arena_interface_python
@@ -30,7 +30,7 @@
 ```
 
 
-<a id="orgb2676a8"></a>
+<a id="org7230bb6"></a>
 
 # Example Usage
 
@@ -80,11 +80,11 @@ arena-interface set-refresh-rate 175
 ```
 
 ```sh
-arena-interface trial-params 3 200
+arena-interface trial-params 3 20
 ```
 
 
-<a id="org769471b"></a>
+<a id="org36100c9"></a>
 
 # Installation
 
@@ -209,7 +209,7 @@ The Python code in this library may be installed in any number of ways, chose on
     ```
 
 
-<a id="orga8c075d"></a>
+<a id="orgfc72ca7"></a>
 
 # Development
 
