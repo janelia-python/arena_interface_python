@@ -54,7 +54,7 @@ class ArenaInterface():
         init_pos = 0x04
         gain = 0x10
         runtime_duration = 0xDD
-        cmd_bytes = struct.pack('<BBBHHHHH',
+        cmd_bytes = struct.pack('<BBBHhHHH',
                                 0x0c,
                                 0x08,
                                 control_mode,
