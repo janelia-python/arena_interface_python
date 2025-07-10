@@ -48,12 +48,11 @@ class ArenaInterface():
         """Reset arena."""
         self._send_and_receive(b'\x01\x01')
 
-    def trial_params(self, pattern_id, frame_rate):
+    def trial_params(self, pattern_id, frame_rate, runtime_duration):
         """Set trial parameters."""
         control_mode = 0xAA
         init_pos = 0x04
         gain = 0x10
-        runtime_duration = 0xDD
         cmd_bytes = struct.pack('<BBBHhHHH',
                                 0x0c,
                                 0x08,

@@ -1,13 +1,13 @@
-- [About](#org68cb7c3)
-- [Example Usage](#orgd3fcc31)
-- [Installation](#org5dc18e3)
-- [Development](#org7876c3c)
+- [About](#orgf5c7bc7)
+- [Example Usage](#orged2f633)
+- [Installation](#org3428fb6)
+- [Development](#orgbf63401)
 
     <!-- This file is generated automatically from metadata -->
     <!-- File edits may be overwritten! -->
 
 
-<a id="org68cb7c3"></a>
+<a id="orgf5c7bc7"></a>
 
 # About
 
@@ -16,7 +16,7 @@
 - Description: Python interface to the Reiser lab ArenaController.
 - Version: 0.1.0
 - Python Version: 3.11
-- Release Date: 2025-07-09
+- Release Date: 2025-07-10
 - Creation Date: 2023-10-17
 - License: BSD-3-Clause
 - URL: https://github.com/janelia-python/arena_interface_python
@@ -30,7 +30,7 @@
 ```
 
 
-<a id="orgd3fcc31"></a>
+<a id="orged2f633"></a>
 
 # Example Usage
 
@@ -59,8 +59,10 @@ Options:
 Commands:
   all-off
   all-on
-  reset
+  display-reset
+  set-refresh-rate
   stream-frame
+  trial-params
 ```
 
 ```sh
@@ -72,6 +74,10 @@ Options:
 ```
 
 ```sh
+arena-interface all-on
+```
+
+```sh
 arena-interface stream-frame ./patterns/pat0004.pat 0
 ```
 
@@ -80,15 +86,25 @@ arena-interface set-refresh-rate 175
 ```
 
 ```sh
-arena-interface trial-params 3 20
+PATTERN_ID=3
+FRAME_RATE=20
+RUNTIME_DURATION=50 # 50 * 100ms = 5000ms = 5s
+arena-interface trial-params -- $PATTERN_ID $FRAME_RATE $RUNTIME_DURATION
 ```
 
 ```sh
-arena-interface trial-params -- 3 -20 # must use -- to enter negative number
+PATTERN_ID=3
+FRAME_RATE=-20
+RUNTIME_DURATION=50 # 50 * 100ms = 5000ms = 5s
+arena-interface trial-params -- $PATTERN_ID $FRAME_RATE $RUNTIME_DURATION
+```
+
+```sh
+arena-interface all-off
 ```
 
 
-<a id="org5dc18e3"></a>
+<a id="org3428fb6"></a>
 
 # Installation
 
@@ -213,7 +229,7 @@ The Python code in this library may be installed in any number of ways, chose on
     ```
 
 
-<a id="org7876c3c"></a>
+<a id="orgbf63401"></a>
 
 # Development
 
