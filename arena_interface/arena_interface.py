@@ -48,6 +48,11 @@ class ArenaInterface():
         """Reset arena."""
         self._send_and_receive(b'\x01\x01')
 
+    def switch_grayscale(self, grayscale_index):
+        """Switches grayscale value. grayscale_index: 0=binary, 1=grayscale"""
+        cmd_bytes = struct.pack('<BBB', 0x02, 0x06, grayscale_index)
+        self._send_and_receive(cmd_bytes)
+
     def trial_params(self, pattern_id, frame_rate, runtime_duration):
         """Set trial parameters."""
         control_mode = 0xAA

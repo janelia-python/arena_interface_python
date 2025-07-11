@@ -209,16 +209,14 @@ Options:
   --help  Show this message and exit.
 #+END_SRC
 
+**** example commands
+
 #+BEGIN_SRC sh
 arena-interface all-on
 #+END_SRC
 
 #+BEGIN_SRC sh
 arena-interface stream-frame ./patterns/pat0004.pat 0
-#+END_SRC
-
-#+BEGIN_SRC sh
-arena-interface set-refresh-rate 175
 #+END_SRC
 
 #+BEGIN_SRC sh
@@ -237,6 +235,16 @@ arena-interface trial-params -- $PATTERN_ID $FRAME_RATE $RUNTIME_DURATION
 
 #+BEGIN_SRC sh
 arena-interface all-off
+#+END_SRC
+
+**** advanced commands
+
+#+BEGIN_SRC sh
+arena-interface set-refresh-rate 175
+#+END_SRC
+
+#+BEGIN_SRC sh
+arena-interface switch-grayscale 0 # 0=binary, 1=grayscale
 #+END_SRC
 
 * Installation

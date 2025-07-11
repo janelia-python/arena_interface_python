@@ -21,6 +21,12 @@ def display_reset(ai):
     ai.display_reset()
 
 @cli.command()
+@click.argument('grayscale-index', nargs=1, type=int)
+@click.pass_obj
+def switch_grayscale(ai, grayscale_index):
+    ai.switch_grayscale(grayscale_index)
+
+@cli.command()
 @click.argument('pattern-id', nargs=1, type=int)
 @click.argument('frame-rate', nargs=1, type=int)
 @click.argument('runtime-duration', nargs=1, type=int)
