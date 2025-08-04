@@ -42,11 +42,13 @@ Python interface to the Reiser lab ArenaController.
 #+NAME: python-dependencies
 #+BEGIN_SRC text :exports none :noweb yes
 click
+schedule
 #+END_SRC
 
 #+NAME: guix-dependencies
 #+BEGIN_SRC text :exports none :noweb yes
 python-click
+python-schedule
 #+END_SRC
 
 #+NAME: command-line-interface
@@ -216,7 +218,14 @@ arena-interface all-on
 #+END_SRC
 
 #+BEGIN_SRC sh
-arena-interface stream-frame ./patterns/pat0004.pat 0
+$FRAME_INDEX=0
+arena-interface stream-frame ./patterns/pat0004.pat $FRAME_INDEX
+#+END_SRC
+
+#+BEGIN_SRC sh
+FRAME_RATE=2
+RUNTIME_DURATION=50 # 50 * 100ms = 5000ms = 5s
+arena-interface stream-frames ./patterns/pat0004.pat $FRAME_RATE $RUNTIME_DURATION
 #+END_SRC
 
 #+BEGIN_SRC sh

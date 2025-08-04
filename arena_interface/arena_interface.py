@@ -1,6 +1,8 @@
 """Python interface to the Reiser lab ArenaController."""
 import socket
 import struct
+import time
+import threading
 
 
 PORT = 62222
@@ -8,6 +10,10 @@ IP_ADDRESS = '192.168.10.62'
 PATTERN_HEADER_SIZE = 7
 BYTE_COUNT_PER_PANEL_GRAYSCALE = 132
 REPEAT_LIMIT = 4
+NANOSECONDS_PER_SECOND = 1e9
+NANOSECONDS_PER_RUNTIME_DURATION = 1e8
+RUNTIME_DURATION_PER_SECOND = 10
+
 
 class ArenaInterface():
     """Python interface to the Reiser lab ArenaController."""
@@ -111,6 +117,57 @@ class ArenaInterface():
             self._debug_print('len(message): ', len(message))
             # self._debug_print('message: ', message)
             self._send_and_receive(message)
+
+    def stream_frames(self, path, frame_rate, runtime_duration):
+        """Stream frames in pattern file at some frame rate for some duration."""
+        self._debug_print('pattern path: ', path)
+        self._debug_print('frame_rate: ', frame_rate)
+        if frame_rate is not 0:
+            frame_period_ns = int(NANOSECONDS_PER_SECOND / frame_rate)
+        runtime_duration_ns = int(NANOSECONDS_PER_RUNTIME_DURATION * runtime_duration)
+        self._debug_print('frame_period_ns: ', frame_period_ns)
+        self._debug_print('runtime_duration_ns: ', runtime_duration_ns)
+        frames_displayed_count = 0
+        with open(path, mode='rb') as f:
+            content = f.read()
+            pattern_header = struct.unpack('<HHBBB', content[:PATTERN_HEADER_SIZE])
+            self._debug_print('pattern header: ', pattern_header)
+            frames = content[PATTERN_HEADER_SIZE:]
+            frame_count = pattern_header[0] * pattern_header[1]
+            frame_len = len(frames)//frame_count
+            self._debug_print('frame_count: ', frame_count)
+            frames_to_display_count = int((frame_rate * runtime_duration) / RUNTIME_DURATION_PER_SECOND)
+            stream_frames_start_time = None
+            # while (time.time_ns() - stream_frames_start_time) < runtime_duration_ns:
+            while frames_displayed_count < frames_to_display_count:
+                pattern_start_time = time.time_ns()
+                for frame_index in range(0,frame_count):
+                    while (time.time_ns() - pattern_start_time) < ((frame_index + 1) * frame_period_ns):
+                        pass
+                    if stream_frames_start_time is None:
+                        stream_frames_start_time = time.time_ns()
+                    # self._debug_print('frame_index: ', frame_index)
+                    # self._debug_print('frame_time_ns: ', time.time_ns())
+                    frame_start = frame_index * frame_len
+                    # # self._debug_print('frame_start: ', frame_start)
+                    frame_end = frame_start + frame_len
+                    # # self._debug_print('frame_end: ', frame_end)
+                    frame = frames[frame_start:frame_end]
+                    data_len = len(frame)
+                    # # self._debug_print('data_len: ', data_len)
+                    frame_header = struct.pack('<BHHH', 0x32, data_len, 0,  0)
+                    # self._debug_print('frame header: ', frame_header)
+                    message = frame_header + frame
+                    # self._debug_print('len(message): ', len(message))
+                    # # self._debug_print('message: ', message)
+                    self._send_and_receive(message)
+                    frames_displayed_count= frames_displayed_count + 1
+                    print('frames displayed: ', frames_displayed_count, ':', frames_to_display_count)
+            stream_frames_stop_time = time.time_ns()
+            duration_s = (stream_frames_stop_time - stream_frames_start_time) / NANOSECONDS_PER_SECOND
+            print('duration:', duration_s)
+            frame_rate_actual = frames_displayed_count / duration_s
+            print('frame rate requested: ', frame_rate, ', frame rate actual:', frame_rate_actual)
 
     def all_off_str(self):
         """Turn all panels off with string."""

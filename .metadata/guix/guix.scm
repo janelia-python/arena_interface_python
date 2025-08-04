@@ -41,7 +41,8 @@
     (propagated-inputs (list
                         coreutils
                         ncurses
-                        python-click))
+                        python-click
+                        python-schedule))
     (home-page "")
     (synopsis "")
     (description "")
