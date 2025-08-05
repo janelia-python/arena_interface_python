@@ -220,12 +220,14 @@ arena-interface all-on
 #+BEGIN_SRC sh
 $FRAME_INDEX=0
 arena-interface stream-frame ./patterns/pat0004.pat $FRAME_INDEX
+arena-interface stream-frame ./patterns/pat0004.pat 0
 #+END_SRC
 
 #+BEGIN_SRC sh
 FRAME_RATE=2
 RUNTIME_DURATION=50 # 50 * 100ms = 5000ms = 5s
 arena-interface stream-frames ./patterns/pat0004.pat $FRAME_RATE $RUNTIME_DURATION
+arena-interface stream-frames ./patterns/pat0004.pat 2 50
 #+END_SRC
 
 #+BEGIN_SRC sh
@@ -233,6 +235,7 @@ PATTERN_ID=3
 FRAME_RATE=20
 RUNTIME_DURATION=50 # 50 * 100ms = 5000ms = 5s
 arena-interface trial-params -- $PATTERN_ID $FRAME_RATE $RUNTIME_DURATION
+arena-interface trial-params -- 3 20 50
 #+END_SRC
 
 #+BEGIN_SRC sh
@@ -240,6 +243,7 @@ PATTERN_ID=3
 FRAME_RATE=-20
 RUNTIME_DURATION=50 # 50 * 100ms = 5000ms = 5s
 arena-interface trial-params -- $PATTERN_ID $FRAME_RATE $RUNTIME_DURATION
+arena-interface trial-params -- 3 -20 50
 #+END_SRC
 
 #+BEGIN_SRC sh

@@ -2,7 +2,6 @@
 import socket
 import struct
 import time
-import threading
 
 
 PORT = 62222
@@ -137,17 +136,10 @@ class ArenaInterface():
             frame_len = len(frames)//frame_count
             self._debug_print('frame_count: ', frame_count)
             frames_to_display_count = int((frame_rate * runtime_duration) / RUNTIME_DURATION_PER_SECOND)
-            stream_frames_start_time = None
-            # while (time.time_ns() - stream_frames_start_time) < runtime_duration_ns:
+            stream_frames_start_time = time.time_ns()
             while frames_displayed_count < frames_to_display_count:
                 pattern_start_time = time.time_ns()
                 for frame_index in range(0,frame_count):
-                    while (time.time_ns() - pattern_start_time) < ((frame_index + 1) * frame_period_ns):
-                        pass
-                    if stream_frames_start_time is None:
-                        stream_frames_start_time = time.time_ns()
-                    # self._debug_print('frame_index: ', frame_index)
-                    # self._debug_print('frame_time_ns: ', time.time_ns())
                     frame_start = frame_index * frame_len
                     # # self._debug_print('frame_start: ', frame_start)
                     frame_end = frame_start + frame_len
@@ -162,12 +154,16 @@ class ArenaInterface():
                     # # self._debug_print('message: ', message)
                     self._send_and_receive(message)
                     frames_displayed_count= frames_displayed_count + 1
-                    print('frames displayed: ', frames_displayed_count, ':', frames_to_display_count)
+                    seconds_elapsed = int((time.time_ns() - stream_frames_start_time) / NANOSECONDS_PER_SECOND)
+                    print('frames streamed: ', frames_displayed_count, ':', frames_to_display_count, seconds_elapsed)
+                    while (time.time_ns() - pattern_start_time) < ((frame_index + 1) * frame_period_ns):
+                        pass
             stream_frames_stop_time = time.time_ns()
             duration_s = (stream_frames_stop_time - stream_frames_start_time) / NANOSECONDS_PER_SECOND
-            print('duration:', duration_s)
+            print('stream frames duration:', duration_s)
             frame_rate_actual = frames_displayed_count / duration_s
             print('frame rate requested: ', frame_rate, ', frame rate actual:', frame_rate_actual)
+            self.all_off()
 
     def all_off_str(self):
         """Turn all panels off with string."""
