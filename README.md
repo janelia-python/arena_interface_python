@@ -1,22 +1,22 @@
-- [About](#org737bc0e)
-- [Example Usage](#org3d866fe)
-- [Installation](#org828569c)
-- [Development](#org923df5f)
+- [About](#orgff53892)
+- [Example Usage](#org0198007)
+- [Installation](#org676fd9e)
+- [Development](#org00e4828)
 
     <!-- This file is generated automatically from metadata -->
     <!-- File edits may be overwritten! -->
 
 
-<a id="org737bc0e"></a>
+<a id="orgff53892"></a>
 
 # About
 
 ```markdown
 - Python Package Name: arena_interface
 - Description: Python interface to the Reiser lab ArenaController.
-- Version: 0.1.0
+- Version: 2.0.0
 - Python Version: 3.11
-- Release Date: 2025-07-11
+- Release Date: 2025-08-06
 - Creation Date: 2023-10-17
 - License: BSD-3-Clause
 - URL: https://github.com/janelia-python/arena_interface_python
@@ -27,10 +27,11 @@
   - https://github.com/janelia-arduino/ArenaController
 - Dependencies:
   - click
+  - schedule
 ```
 
 
-<a id="org3d866fe"></a>
+<a id="org0198007"></a>
 
 # Example Usage
 
@@ -80,7 +81,16 @@ Options:
     ```
     
     ```sh
+    $FRAME_INDEX=0
+    arena-interface stream-frame ./patterns/pat0004.pat $FRAME_INDEX
     arena-interface stream-frame ./patterns/pat0004.pat 0
+    ```
+    
+    ```sh
+    FRAME_RATE=2
+    RUNTIME_DURATION=50 # 50 * 100ms = 5000ms = 5s
+    arena-interface stream-frames ./patterns/pat0004.pat $FRAME_RATE $RUNTIME_DURATION
+    arena-interface stream-frames ./patterns/pat0004.pat 2 50
     ```
     
     ```sh
@@ -88,6 +98,7 @@ Options:
     FRAME_RATE=20
     RUNTIME_DURATION=50 # 50 * 100ms = 5000ms = 5s
     arena-interface trial-params -- $PATTERN_ID $FRAME_RATE $RUNTIME_DURATION
+    arena-interface trial-params -- 3 20 50
     ```
     
     ```sh
@@ -95,6 +106,7 @@ Options:
     FRAME_RATE=-20
     RUNTIME_DURATION=50 # 50 * 100ms = 5000ms = 5s
     arena-interface trial-params -- $PATTERN_ID $FRAME_RATE $RUNTIME_DURATION
+    arena-interface trial-params -- 3 -20 50
     ```
     
     ```sh
@@ -112,7 +124,7 @@ Options:
     ```
 
 
-<a id="org828569c"></a>
+<a id="org676fd9e"></a>
 
 # Installation
 
@@ -237,7 +249,7 @@ The Python code in this library may be installed in any number of ways, chose on
     ```
 
 
-<a id="org923df5f"></a>
+<a id="org00e4828"></a>
 
 # Development
 

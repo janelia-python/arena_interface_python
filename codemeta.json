@@ -4,9 +4,9 @@
     "license": "https://spdx.org/licenses/BSD-3-Clause",
     "codeRepository": "https://github.com/janelia-python/arena_interface_python",
     "dateCreated": "2023-10-17",
-    "dateModified": "2025-07-11",
+    "dateModified": "2025-08-06",
     "name": "arena_interface",
-    "version": "0.1.0",
+    "version": "2.0.0",
     "description": "Python interface to the Reiser lab ArenaController.",
     "programmingLanguage": [
         "Python 3"
