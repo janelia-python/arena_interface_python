@@ -43,12 +43,14 @@ Python interface to the Reiser lab ArenaController.
 #+BEGIN_SRC text :exports none :noweb yes
 click
 schedule
+pyserial
 #+END_SRC
 
 #+NAME: guix-dependencies
 #+BEGIN_SRC text :exports none :noweb yes
 python-click
 python-schedule
+python-pyserial
 #+END_SRC
 
 #+NAME: command-line-interface
@@ -180,7 +182,16 @@ Python 3
 #+BEGIN_SRC python
 from arena_interface import ArenaInterface
 
-ai = ArenaInterface()
+ai = ArenaInterface(debug=True)
+ai.set_ethernet_mode()
+# or
+ai.set_serial_mode(port='/dev/ttyACM0', baudrate=115200)
+ai.all_on()
+ai.all_off()
+ai.stream_frame(path='./patterns/pat0004.pat', frame_index=0)
+ai.stream_frames(path='./patterns/pat0004.pat', frame_rate=2, runtime_duration=50)
+ai.trial_params(pattern_id=3, frame_rate=20, runtime_duration=50)
+ai.trial_params(pattern_id=3, frame_rate=-20, runtime_duration=50)
 #+END_SRC
 
 ** Command Line

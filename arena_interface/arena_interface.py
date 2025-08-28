@@ -2,6 +2,8 @@
 import socket
 import struct
 import time
+import serial
+import atexit
 
 
 PORT = 62222
@@ -12,6 +14,8 @@ REPEAT_LIMIT = 4
 NANOSECONDS_PER_SECOND = 1e9
 NANOSECONDS_PER_RUNTIME_DURATION = 1e8
 RUNTIME_DURATION_PER_SECOND = 10
+SERIAL_TIMEOUT = 0.05
+SERIAL_BAUDRATE = 115200
 
 
 class ArenaInterface():
@@ -19,31 +23,63 @@ class ArenaInterface():
     def __init__(self, debug=True):
         """Initialize a ArenaHost instance."""
         self._debug = debug
+        self._serial = None
+        atexit.register(self._exit)
 
     def _debug_print(self, *args):
         """Print if debug is True."""
         if self._debug:
             print(*args)
 
+    def _exit(self):
+        """
+        Close the serial connection to provide some clean up.
+        """
+        if self._serial:
+            self._serial.close()
+
     def _send_and_receive(self, cmd):
         """Send command and receive response."""
         if len(cmd) < 32:
             self._debug_print('command: ', cmd)
         repeat_count = 0
+        response = None
         while repeat_count < REPEAT_LIMIT:
-            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-                self._debug_print(f'to {IP_ADDRESS} port {PORT}')
-                s.settimeout(2)
+            if self._serial:
                 try:
-                    s.connect((IP_ADDRESS, PORT))
-                    s.sendall(cmd)
-                    response = s.recv(1024)
+                    bytes_written = self._serial.write(cmd)
+                    self._debug_print('bytes_written:', bytes_written)
+                    response = self._serial.readline()
                     break
-                except (TimeoutError, OSError):
-                    self._debug_print('socket timed out')
-                    response = None
+                except serial.SerialTimeoutException:
+                    self._debug_print('serial timed out')
                     repeat_count += 1
+            else:
+                with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                    self._debug_print(f'to {IP_ADDRESS} port {PORT}')
+                    s.settimeout(2)
+                    try:
+                        s.connect((IP_ADDRESS, PORT))
+                        s.sendall(cmd)
+                        response = s.recv(1024)
+                        break
+                    except (TimeoutError, OSError):
+                        self._debug_print('socket timed out')
+                        repeat_count += 1
         self._debug_print('response: ', response)
+
+    def set_ethernet_mode(self):
+        """Set ethernet mode."""
+        self._serial = None
+
+    def set_serial_mode(self, port, baudrate=SERIAL_BAUDRATE):
+        """Set serial mode specifying the serial port."""
+        self._serial = serial.Serial()
+        self._serial.port = port
+        self._serial.baudrate = baudrate
+        self._serial.timeout = SERIAL_TIMEOUT
+        self._serial.open()
+        return self._serial.is_open
 
     def all_off(self):
         """Turn all panels off."""
@@ -121,7 +157,7 @@ class ArenaInterface():
         """Stream frames in pattern file at some frame rate for some duration."""
         self._debug_print('pattern path: ', path)
         self._debug_print('frame_rate: ', frame_rate)
-        if frame_rate is not 0:
+        if frame_rate != 0:
             frame_period_ns = int(NANOSECONDS_PER_SECOND / frame_rate)
         runtime_duration_ns = int(NANOSECONDS_PER_RUNTIME_DURATION * runtime_duration)
         self._debug_print('frame_period_ns: ', frame_period_ns)

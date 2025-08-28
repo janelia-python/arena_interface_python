@@ -9,6 +9,7 @@ from .arena_interface import ArenaInterface
 @click.pass_context
 def cli(ctx):
     ctx.obj = ArenaInterface(debug=False)
+    # ctx.obj = ArenaInterface(debug=True)
 
 @cli.command()
 @click.pass_obj

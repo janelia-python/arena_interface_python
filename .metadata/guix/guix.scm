@@ -42,7 +42,8 @@
                         coreutils
                         ncurses
                         python-click
-                        python-schedule))
+                        python-schedule
+                        python-pyserial))
     (home-page "")
     (synopsis "")
     (description "")
