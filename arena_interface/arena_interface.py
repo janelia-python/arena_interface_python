@@ -5,6 +5,9 @@ import time
 import serial
 import atexit
 
+import cProfile
+import pstats
+
 
 PORT = 62222
 IP_ADDRESS = '192.168.10.62'
@@ -14,7 +17,8 @@ REPEAT_LIMIT = 4
 NANOSECONDS_PER_SECOND = 1e9
 NANOSECONDS_PER_RUNTIME_DURATION = 1e8
 RUNTIME_DURATION_PER_SECOND = 10
-SERIAL_TIMEOUT = 0.05
+SOCKET_TIMEOUT = 0.5
+SERIAL_TIMEOUT = 0.005
 SERIAL_BAUDRATE = 115200
 
 
@@ -57,7 +61,7 @@ class ArenaInterface():
             else:
                 with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
                     self._debug_print(f'to {IP_ADDRESS} port {PORT}')
-                    s.settimeout(2)
+                    s.settimeout(SOCKET_TIMEOUT)
                     try:
                         s.connect((IP_ADDRESS, PORT))
                         s.sendall(cmd)
@@ -152,6 +156,19 @@ class ArenaInterface():
             self._debug_print('len(message): ', len(message))
             # self._debug_print('message: ', message)
             self._send_and_receive(message)
+
+    def profile_stream_frames(self, path, frame_rate, runtime_duration):
+        """Profile stream frames in pattern file at some frame rate for some duration."""
+        # Profile the execution of another_function
+        profiler = cProfile.Profile()
+        profiler.enable()
+        self.stream_frames(path, frame_rate, runtime_duration)
+        profiler.disable()
+
+        # Create a Stats object and print the report
+        stats = pstats.Stats(profiler)
+        stats.sort_stats('tottime') # Sort by total time spent in a function (excluding calls to sub-functions)
+        stats.print_stats()
 
     def stream_frames(self, path, frame_rate, runtime_duration):
         """Stream frames in pattern file at some frame rate for some duration."""
