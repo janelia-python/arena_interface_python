@@ -42,14 +42,22 @@ class ArenaInterface():
         if self._serial:
             self._serial.close()
 
-    def _send_and_receive(self, cmd):
+    def _send_and_receive(self, cmd, ethernet_socket=None):
         """Send command and receive response."""
         if len(cmd) < 32:
             self._debug_print('command: ', cmd)
-        repeat_count = 0
         response = None
+        repeat_count = 0
         while repeat_count < REPEAT_LIMIT:
-            if self._serial:
+            if ethernet_socket:
+                try:
+                    ethernet_socket.sendall(cmd)
+                    response = ethernet_socket.recv(1024)
+                    break
+                except (TimeoutError, OSError):
+                    self._debug_print('stream frames ethernet socket timed out')
+                    repeat_count += 1
+            elif self._serial:
                 try:
                     bytes_written = self._serial.write(cmd)
                     self._debug_print('bytes_written:', bytes_written)
@@ -68,12 +76,14 @@ class ArenaInterface():
                         response = s.recv(1024)
                         break
                     except (TimeoutError, OSError):
-                        self._debug_print('socket timed out')
+                        self._debug_print('ethernet socket timed out')
                         repeat_count += 1
         self._debug_print('response: ', response)
 
     def set_ethernet_mode(self):
         """Set ethernet mode."""
+        if self._serial:
+            self._serial.close()
         self._serial = None
 
     def set_serial_mode(self, port, baudrate=SERIAL_BAUDRATE):
@@ -189,6 +199,19 @@ class ArenaInterface():
             frame_len = len(frames)//frame_count
             self._debug_print('frame_count: ', frame_count)
             frames_to_display_count = int((frame_rate * runtime_duration) / RUNTIME_DURATION_PER_SECOND)
+            ethernet_socket = None
+            if not self._serial:
+                ethernet_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                self._debug_print(f'to {IP_ADDRESS} port {PORT}')
+                ethernet_socket.settimeout(SOCKET_TIMEOUT)
+                repeat_count = 0
+                while repeat_count < REPEAT_LIMIT:
+                    try:
+                        ethernet_socket.connect((IP_ADDRESS, PORT))
+                        break
+                    except (TimeoutError, OSError):
+                        self._debug_print('stream frames ethernet socket timed out')
+                        repeat_count += 1
             stream_frames_start_time = time.time_ns()
             while frames_displayed_count < frames_to_display_count:
                 pattern_start_time = time.time_ns()
@@ -205,7 +228,7 @@ class ArenaInterface():
                     message = frame_header + frame
                     # self._debug_print('len(message): ', len(message))
                     # # self._debug_print('message: ', message)
-                    self._send_and_receive(message)
+                    self._send_and_receive(message, ethernet_socket)
                     frames_displayed_count= frames_displayed_count + 1
                     seconds_elapsed = int((time.time_ns() - stream_frames_start_time) / NANOSECONDS_PER_SECOND)
                     print('frames streamed: ', frames_displayed_count, ':', frames_to_display_count, seconds_elapsed)

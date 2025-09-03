@@ -189,7 +189,7 @@ ai.set_serial_mode(port='/dev/ttyACM0', baudrate=115200)
 ai.all_on()
 ai.all_off()
 ai.stream_frame(path='./patterns/pat0004.pat', frame_index=0)
-ai.stream_frames(path='./patterns/pat0004.pat', frame_rate=2, runtime_duration=50)
+ai.stream_frames(path='./patterns/pat0004.pat', frame_rate=20, runtime_duration=50)
 ai.trial_params(pattern_id=3, frame_rate=20, runtime_duration=50)
 ai.trial_params(pattern_id=3, frame_rate=-20, runtime_duration=50)
 #+END_SRC
