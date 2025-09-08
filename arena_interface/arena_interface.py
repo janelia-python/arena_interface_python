@@ -17,10 +17,10 @@ REPEAT_LIMIT = 4
 NANOSECONDS_PER_SECOND = 1e9
 NANOSECONDS_PER_RUNTIME_DURATION = 1e8
 RUNTIME_DURATION_PER_SECOND = 10
-SOCKET_TIMEOUT = 0.5
-SERIAL_TIMEOUT = 0.005
+MILLISECONDS_PER_SECOND = 1000
+SOCKET_TIMEOUT = None
+SERIAL_TIMEOUT = None
 SERIAL_BAUDRATE = 115200
-
 
 class ArenaInterface():
     """Python interface to the Reiser lab ArenaController."""
@@ -42,6 +42,34 @@ class ArenaInterface():
         if self._serial:
             self._serial.close()
 
+    def _connect_ethernet_socket(self):
+        """
+        Connect and return an ethernet socket if in ethernet mode.
+        """
+        ethernet_socket = None
+        if not self._serial:
+            ethernet_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            self._debug_print(f'to {IP_ADDRESS} port {PORT}')
+            ethernet_socket.settimeout(SOCKET_TIMEOUT)
+            repeat_count = 0
+            while repeat_count < REPEAT_LIMIT:
+                try:
+                    ethernet_socket.connect((IP_ADDRESS, PORT))
+                    break
+                except (TimeoutError, OSError):
+                    self._debug_print('stream frames ethernet socket timed out')
+                    repeat_count += 1
+        return ethernet_socket
+
+    def _read(self, ethernet_socket=None, byte_count=1):
+        """Read bytes."""
+        response = b''
+        if ethernet_socket:
+            response = ethernet_socket.recv(byte_count)
+        elif self._serial:
+            response = self._serial.read(size=byte_count)
+        return response
+
     def _send_and_receive(self, cmd, ethernet_socket=None):
         """Send command and receive response."""
         if len(cmd) < 32:
@@ -52,7 +80,9 @@ class ArenaInterface():
             if ethernet_socket:
                 try:
                     ethernet_socket.sendall(cmd)
-                    response = ethernet_socket.recv(1024)
+                    response = ethernet_socket.recv(1)
+                    if len(response) == 1:
+                        response += ethernet_socket.recv(int(response[0]))
                     break
                 except (TimeoutError, OSError):
                     self._debug_print('stream frames ethernet socket timed out')
@@ -61,7 +91,9 @@ class ArenaInterface():
                 try:
                     bytes_written = self._serial.write(cmd)
                     self._debug_print('bytes_written:', bytes_written)
-                    response = self._serial.readline()
+                    response = self._serial.read(size=1)
+                    if len(response) == 1:
+                        response += self._serial.read(size=int(response[0]))
                     break
                 except serial.SerialTimeoutException:
                     self._debug_print('serial timed out')
@@ -73,7 +105,9 @@ class ArenaInterface():
                     try:
                         s.connect((IP_ADDRESS, PORT))
                         s.sendall(cmd)
-                        response = s.recv(1024)
+                        response = s.recv(1)
+                        if len(response) == 1:
+                            response += s.recv(int(response[0]))
                         break
                     except (TimeoutError, OSError):
                         self._debug_print('ethernet socket timed out')
@@ -122,7 +156,20 @@ class ArenaInterface():
                                 init_pos,
                                 gain,
                                 runtime_duration)
-        self._send_and_receive(cmd_bytes)
+        runtime_duration_s = (runtime_duration * 1.0) / RUNTIME_DURATION_PER_SECOND
+        runtime_duration_ms = int(runtime_duration_s * MILLISECONDS_PER_SECOND)
+        self._debug_print('runtime_duration_ms: ', runtime_duration_ms)
+        ethernet_socket = self._connect_ethernet_socket()
+        self._send_and_receive(cmd_bytes, ethernet_socket)
+
+        while True:
+            self._debug_print('waiting for trial end response...')
+            time.sleep(1)
+            response = self._read(ethernet_socket, 1)
+            if len(response) == 1:
+                response += self._read(ethernet_socket, int(response[0]))
+                break
+        self._debug_print('response: ', response)
 
     def set_refresh_rate(self, refresh_rate):
         """Set refresh rate in Hz."""
@@ -199,19 +246,7 @@ class ArenaInterface():
             frame_len = len(frames)//frame_count
             self._debug_print('frame_count: ', frame_count)
             frames_to_display_count = int((frame_rate * runtime_duration) / RUNTIME_DURATION_PER_SECOND)
-            ethernet_socket = None
-            if not self._serial:
-                ethernet_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                self._debug_print(f'to {IP_ADDRESS} port {PORT}')
-                ethernet_socket.settimeout(SOCKET_TIMEOUT)
-                repeat_count = 0
-                while repeat_count < REPEAT_LIMIT:
-                    try:
-                        ethernet_socket.connect((IP_ADDRESS, PORT))
-                        break
-                    except (TimeoutError, OSError):
-                        self._debug_print('stream frames ethernet socket timed out')
-                        repeat_count += 1
+            ethernet_socket = self._connect_ethernet_socket()
             stream_frames_start_time = time.time_ns()
             while frames_displayed_count < frames_to_display_count:
                 pattern_start_time = time.time_ns()
