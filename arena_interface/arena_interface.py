@@ -119,6 +119,7 @@ class ArenaInterface():
         if self._serial:
             self._serial.close()
         self._serial = None
+        return True
 
     def set_serial_mode(self, port, baudrate=SERIAL_BAUDRATE):
         """Set serial mode specifying the serial port."""
