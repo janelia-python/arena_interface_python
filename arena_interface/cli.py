@@ -9,7 +9,6 @@ from .arena_interface import ArenaInterface
 @click.pass_context
 def cli(ctx):
     ctx.obj = ArenaInterface(debug=False)
-    # ctx.obj = ArenaInterface(debug=True)
 
 @cli.command()
 @click.pass_obj
@@ -32,8 +31,8 @@ def switch_grayscale(ai, grayscale_index):
 @click.argument('frame-rate', nargs=1, type=int)
 @click.argument('runtime-duration', nargs=1, type=int)
 @click.pass_obj
-def trial_params(ai, pattern_id, frame_rate, runtime_duration):
-    ai.trial_params(pattern_id, frame_rate, runtime_duration)
+def play_pattern(ai, pattern_id, frame_rate, runtime_duration):
+    ai.play_pattern(pattern_id, frame_rate, runtime_duration)
 
 @cli.command()
 @click.argument('refresh-rate', nargs=1, type=int)

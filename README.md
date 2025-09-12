@@ -1,13 +1,13 @@
-- [About](#org07082ef)
-- [Example Usage](#orge519745)
-- [Installation](#org0faadf0)
-- [Development](#org48628f4)
+- [About](#org2d94542)
+- [Example Usage](#org5869ada)
+- [Installation](#org6011385)
+- [Development](#orgd2cf276)
 
     <!-- This file is generated automatically from metadata -->
     <!-- File edits may be overwritten! -->
 
 
-<a id="org07082ef"></a>
+<a id="org2d94542"></a>
 
 # About
 
@@ -16,7 +16,7 @@
 - Description: Python interface to the Reiser lab ArenaController.
 - Version: 3.0.0
 - Python Version: 3.11
-- Release Date: 2025-09-09
+- Release Date: 2025-09-12
 - Creation Date: 2023-10-17
 - License: BSD-3-Clause
 - URL: https://github.com/janelia-python/arena_interface_python
@@ -32,7 +32,7 @@
 ```
 
 
-<a id="orge519745"></a>
+<a id="org5869ada"></a>
 
 # Example Usage
 
@@ -50,8 +50,8 @@ ai.all_on()
 ai.all_off()
 ai.stream_frame(path='./patterns/pat0004.pat', frame_index=0)
 ai.stream_frames(path='./patterns/pat0004.pat', frame_rate=20, runtime_duration=50)
-ai.trial_params(pattern_id=3, frame_rate=20, runtime_duration=50)
-ai.trial_params(pattern_id=3, frame_rate=-20, runtime_duration=50)
+ai.play_pattern(pattern_id=3, frame_rate=20, runtime_duration=50)
+ai.play_pattern(pattern_id=3, frame_rate=-20, runtime_duration=50)
 ```
 
 
@@ -73,7 +73,7 @@ Commands:
   display-reset
   set-refresh-rate
   stream-frame
-  trial-params
+  play-pattern
 ```
 
 ```sh
@@ -107,16 +107,16 @@ Options:
     PATTERN_ID=3
     FRAME_RATE=20
     RUNTIME_DURATION=50 # 50 * 100ms = 5000ms = 5s
-    arena-interface trial-params -- $PATTERN_ID $FRAME_RATE $RUNTIME_DURATION
-    arena-interface trial-params -- 3 20 50
+    arena-interface play-pattern -- $PATTERN_ID $FRAME_RATE $RUNTIME_DURATION
+    arena-interface play-pattern -- 3 20 50
     ```
     
     ```sh
     PATTERN_ID=3
     FRAME_RATE=-20
     RUNTIME_DURATION=50 # 50 * 100ms = 5000ms = 5s
-    arena-interface trial-params -- $PATTERN_ID $FRAME_RATE $RUNTIME_DURATION
-    arena-interface trial-params -- 3 -20 50
+    arena-interface play-pattern -- $PATTERN_ID $FRAME_RATE $RUNTIME_DURATION
+    arena-interface play-pattern -- 3 -20 50
     ```
     
     ```sh
@@ -134,7 +134,7 @@ Options:
     ```
 
 
-<a id="org0faadf0"></a>
+<a id="org6011385"></a>
 
 # Installation
 
@@ -259,7 +259,7 @@ The Python code in this library may be installed in any number of ways, chose on
     ```
 
 
-<a id="org48628f4"></a>
+<a id="orgd2cf276"></a>
 
 # Development
 

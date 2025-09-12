@@ -190,8 +190,8 @@ ai.all_on()
 ai.all_off()
 ai.stream_frame(path='./patterns/pat0004.pat', frame_index=0)
 ai.stream_frames(path='./patterns/pat0004.pat', frame_rate=20, runtime_duration=50)
-ai.trial_params(pattern_id=3, frame_rate=20, runtime_duration=50)
-ai.trial_params(pattern_id=3, frame_rate=-20, runtime_duration=50)
+ai.play_pattern(pattern_id=3, frame_rate=20, runtime_duration=50)
+ai.play_pattern(pattern_id=3, frame_rate=-20, runtime_duration=50)
 #+END_SRC
 
 ** Command Line
@@ -211,7 +211,7 @@ Commands:
   display-reset
   set-refresh-rate
   stream-frame
-  trial-params
+  play-pattern
 #+END_SRC
 
 #+BEGIN_SRC sh :noweb yes
@@ -245,16 +245,16 @@ arena-interface stream-frames ./patterns/pat0004.pat 2 50
 PATTERN_ID=3
 FRAME_RATE=20
 RUNTIME_DURATION=50 # 50 * 100ms = 5000ms = 5s
-arena-interface trial-params -- $PATTERN_ID $FRAME_RATE $RUNTIME_DURATION
-arena-interface trial-params -- 3 20 50
+arena-interface play-pattern -- $PATTERN_ID $FRAME_RATE $RUNTIME_DURATION
+arena-interface play-pattern -- 3 20 50
 #+END_SRC
 
 #+BEGIN_SRC sh
 PATTERN_ID=3
 FRAME_RATE=-20
 RUNTIME_DURATION=50 # 50 * 100ms = 5000ms = 5s
-arena-interface trial-params -- $PATTERN_ID $FRAME_RATE $RUNTIME_DURATION
-arena-interface trial-params -- 3 -20 50
+arena-interface play-pattern -- $PATTERN_ID $FRAME_RATE $RUNTIME_DURATION
+arena-interface play-pattern -- 3 -20 50
 #+END_SRC
 
 #+BEGIN_SRC sh

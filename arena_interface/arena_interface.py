@@ -143,9 +143,9 @@ class ArenaInterface():
         cmd_bytes = struct.pack('<BBB', 0x02, 0x06, grayscale_index)
         self._send_and_receive(cmd_bytes)
 
-    def trial_params(self, pattern_id, frame_rate, runtime_duration):
-        """Set trial parameters."""
-        control_mode = 0xAA
+    def play_pattern(self, pattern_id, frame_rate, runtime_duration):
+        """Play pattern."""
+        control_mode = 0x02
         init_pos = 0x04
         gain = 0x10
         cmd_bytes = struct.pack('<BBBHhHHH',
@@ -164,7 +164,7 @@ class ArenaInterface():
         self._send_and_receive(cmd_bytes, ethernet_socket)
 
         while True:
-            self._debug_print('waiting for trial end response...')
+            self._debug_print('waiting for playing pattern end response...')
             time.sleep(1)
             response = self._read(ethernet_socket, 1)
             if len(response) == 1:
