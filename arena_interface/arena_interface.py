@@ -21,6 +21,9 @@ MILLISECONDS_PER_SECOND = 1000
 SOCKET_TIMEOUT = None
 SERIAL_TIMEOUT = None
 SERIAL_BAUDRATE = 115200
+ANALOG_OUTPUT_VALUE_MIN = 100
+ANALOG_OUTPUT_VALUE_MAX = 4095
+
 
 class ArenaInterface():
     """Python interface to the Reiser lab ArenaController."""
@@ -185,7 +188,7 @@ class ArenaInterface():
         """Turn all panels on."""
         self._send_and_receive(b'\x01\xff')
 
-    def stream_frame(self, path, frame_index):
+    def stream_frame(self, path, frame_index, analog_output_value=0):
         """Stream frame in pattern file."""
         self._debug_print('pattern path: ', path)
         with open(path, mode='rb') as f:
@@ -208,7 +211,7 @@ class ArenaInterface():
             frame = frames[frame_start:frame_end]
             data_len = len(frame)
             # self._debug_print('data_len: ', data_len)
-            frame_header = struct.pack('<BHHH', 0x32, data_len, 0,  0)
+            frame_header = struct.pack('<BHHH', 0x32, data_len, analog_output_value,  0)
             self._debug_print('frame header: ', frame_header)
             message = frame_header + frame
             self._debug_print('len(message): ', len(message))
@@ -227,6 +230,9 @@ class ArenaInterface():
         stats = pstats.Stats(profiler)
         stats.sort_stats('tottime') # Sort by total time spent in a function (excluding calls to sub-functions)
         stats.print_stats()
+
+    def _map_frame_index_to_analog_value(self, frame_index, frame_count):
+        return int(ANALOG_OUTPUT_VALUE_MIN + (frame_index * (ANALOG_OUTPUT_VALUE_MAX - ANALOG_OUTPUT_VALUE_MIN)) / frame_count)
 
     def stream_frames(self, path, frame_rate, runtime_duration):
         """Stream frames in pattern file at some frame rate for some duration."""
@@ -259,7 +265,9 @@ class ArenaInterface():
                     frame = frames[frame_start:frame_end]
                     data_len = len(frame)
                     # # self._debug_print('data_len: ', data_len)
-                    frame_header = struct.pack('<BHHH', 0x32, data_len, 0,  0)
+                    analog_output_value = self._map_frame_index_to_analog_value(frame_index, frame_count)
+                    self._debug_print('analog_output_value: ', analog_output_value)
+                    frame_header = struct.pack('<BHHH', 0x32, data_len, analog_output_value,  0)
                     # self._debug_print('frame header: ', frame_header)
                     message = frame_header + frame
                     # self._debug_print('len(message): ', len(message))

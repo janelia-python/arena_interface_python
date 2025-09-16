@@ -1,13 +1,13 @@
-- [About](#org2d94542)
-- [Example Usage](#org5869ada)
-- [Installation](#org6011385)
-- [Development](#orgd2cf276)
+- [About](#orged37cd9)
+- [Example Usage](#orgd354cee)
+- [Installation](#orgbc2c6d9)
+- [Development](#orgeff8136)
 
     <!-- This file is generated automatically from metadata -->
     <!-- File edits may be overwritten! -->
 
 
-<a id="org2d94542"></a>
+<a id="orged37cd9"></a>
 
 # About
 
@@ -16,7 +16,7 @@
 - Description: Python interface to the Reiser lab ArenaController.
 - Version: 3.0.0
 - Python Version: 3.11
-- Release Date: 2025-09-12
+- Release Date: 2025-09-16
 - Creation Date: 2023-10-17
 - License: BSD-3-Clause
 - URL: https://github.com/janelia-python/arena_interface_python
@@ -32,7 +32,7 @@
 ```
 
 
-<a id="org5869ada"></a>
+<a id="orgd354cee"></a>
 
 # Example Usage
 
@@ -48,7 +48,7 @@ ai.set_ethernet_mode()
 ai.set_serial_mode(port='/dev/ttyACM0', baudrate=115200)
 ai.all_on()
 ai.all_off()
-ai.stream_frame(path='./patterns/pat0004.pat', frame_index=0)
+ai.stream_frame(path='./patterns/pat0004.pat', frame_index=0, analog_output_value=2048)
 ai.stream_frames(path='./patterns/pat0004.pat', frame_rate=20, runtime_duration=50)
 ai.play_pattern(pattern_id=3, frame_rate=20, runtime_duration=50)
 ai.play_pattern(pattern_id=3, frame_rate=-20, runtime_duration=50)
@@ -134,7 +134,7 @@ Options:
     ```
 
 
-<a id="org6011385"></a>
+<a id="orgbc2c6d9"></a>
 
 # Installation
 
@@ -259,7 +259,7 @@ The Python code in this library may be installed in any number of ways, chose on
     ```
 
 
-<a id="orgd2cf276"></a>
+<a id="orgeff8136"></a>
 
 # Development
 
