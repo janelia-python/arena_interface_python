@@ -149,7 +149,7 @@ class ArenaInterface():
     def play_pattern(self, pattern_id, frame_rate, runtime_duration):
         """Play pattern."""
         control_mode = 0x02
-        init_pos = 0x04
+        frame_index = 0x00
         gain = 0x10
         cmd_bytes = struct.pack('<BBBHhHHH',
                                 0x0c,
@@ -157,7 +157,7 @@ class ArenaInterface():
                                 control_mode,
                                 pattern_id,
                                 frame_rate,
-                                init_pos,
+                                frame_index,
                                 gain,
                                 runtime_duration)
         runtime_duration_s = (runtime_duration * 1.0) / RUNTIME_DURATION_PER_SECOND
@@ -174,6 +174,23 @@ class ArenaInterface():
                 response += self._read(ethernet_socket, int(response[0]))
                 break
         self._debug_print('response: ', response)
+
+    def show_pattern_frame(self, pattern_id, frame_index):
+        """Show pattern frame."""
+        control_mode = 0x03
+        frame_rate = 0
+        gain = 0x10
+        runtime_duration = 0
+        cmd_bytes = struct.pack('<BBBHhHHH',
+                                0x0c,
+                                0x08,
+                                control_mode,
+                                pattern_id,
+                                frame_rate,
+                                frame_index,
+                                gain,
+                                runtime_duration)
+        self._send_and_receive(cmd_bytes)
 
     def set_refresh_rate(self, refresh_rate):
         """Set refresh rate in Hz."""
