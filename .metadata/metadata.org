@@ -193,6 +193,9 @@ ai.stream_frames(path='./patterns/pat0004.pat', frame_rate=20, runtime_duration=
 ai.play_pattern(pattern_id=3, frame_rate=20, runtime_duration=50)
 ai.play_pattern(pattern_id=3, frame_rate=-20, runtime_duration=50)
 ai.show_pattern_frame(pattern_id=3, frame_index=0)
+ai.update_pattern_frame(frame_index=1)
+ai.update_pattern_frame(frame_index=2)
+ai.stream_pattern_frame_indicies(pattern_id=3, frame_index_min=0, frame_index_max=15, frame_rate=20, runtime_duration=50)
 #+END_SRC
 
 ** Command Line

@@ -175,7 +175,7 @@ class ArenaInterface():
                 break
         self._debug_print('response: ', response)
 
-    def show_pattern_frame(self, pattern_id, frame_index):
+    def show_pattern_frame(self, pattern_id, frame_index, ethernet_socket=None):
         """Show pattern frame."""
         control_mode = 0x03
         frame_rate = 0
@@ -190,7 +190,57 @@ class ArenaInterface():
                                 frame_index,
                                 gain,
                                 runtime_duration)
-        self._send_and_receive(cmd_bytes)
+        self._send_and_receive(cmd_bytes, ethernet_socket)
+
+    def update_pattern_frame(self, frame_index, ethernet_socket=None):
+        """Update pattern frame."""
+        cmd_bytes = struct.pack('<BBH',
+                                0x03,
+                                0x70,
+                                frame_index)
+        self._send_and_receive(cmd_bytes, ethernet_socket)
+
+    def profile_stream_pattern_frame_indicies(self, pattern_id, frame_index_min, frame_index_max, frame_rate, runtime_duration):
+        """Profile stream frame indicies in a loop at some rate for some duration."""
+        # Profile the execution of another_function
+        profiler = cProfile.Profile()
+        profiler.enable()
+        self.stream_pattern_frame_indicies(pattern_id, frame_index_min, frame_index_max, frame_rate, runtime_duration)
+        profiler.disable()
+
+        # Create a Stats object and print the report
+        stats = pstats.Stats(profiler)
+        stats.sort_stats('tottime') # Sort by total time spent in a function (excluding calls to sub-functions)
+        stats.print_stats()
+
+    def stream_pattern_frame_indicies(self, pattern_id, frame_index_min, frame_index_max, frame_rate, runtime_duration):
+        """Stream frame indicies in a loop at some rate for some duration."""
+        self._debug_print('frame_rate: ', frame_rate)
+        if frame_rate != 0:
+            frame_period_ns = int(NANOSECONDS_PER_SECOND / frame_rate)
+        runtime_duration_ns = int(NANOSECONDS_PER_RUNTIME_DURATION * runtime_duration)
+        self._debug_print('frame_period_ns: ', frame_period_ns)
+        self._debug_print('runtime_duration_ns: ', runtime_duration_ns)
+        frames_displayed_count = 0
+        frames_to_display_count = int((frame_rate * runtime_duration) / RUNTIME_DURATION_PER_SECOND)
+        ethernet_socket = self._connect_ethernet_socket()
+        self.show_pattern_frame(pattern_id, frame_index_min, ethernet_socket)
+        stream_frames_start_time = time.time_ns()
+        while frames_displayed_count < frames_to_display_count:
+            pattern_start_time = time.time_ns()
+            for frame_index in range(frame_index_min, frame_index_max+1):
+                self.update_pattern_frame(frame_index, ethernet_socket)
+                frames_displayed_count= frames_displayed_count + 1
+                seconds_elapsed = int((time.time_ns() - stream_frames_start_time) / NANOSECONDS_PER_SECOND)
+                self._debug_print('frames streamed: ', frames_displayed_count, ':', frames_to_display_count, seconds_elapsed)
+                while (time.time_ns() - pattern_start_time) < ((frame_index + 1) * frame_period_ns):
+                    pass
+        stream_frames_stop_time = time.time_ns()
+        duration_s = (stream_frames_stop_time - stream_frames_start_time) / NANOSECONDS_PER_SECOND
+        print('stream frames duration:', duration_s)
+        frame_rate_actual = frames_displayed_count / duration_s
+        print('frame rate requested: ', frame_rate, ', frame rate actual:', frame_rate_actual)
+        self.all_off()
 
     def set_refresh_rate(self, refresh_rate):
         """Set refresh rate in Hz."""
