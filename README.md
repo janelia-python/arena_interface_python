@@ -1,20 +1,20 @@
-- [About](#org301ea0a)
-- [Example Usage](#org57935f0)
-- [Installation](#org0887fa1)
-- [Development](#orgfb39c9b)
+- [About](#org4aceefb)
+- [Example Usage](#orgeb5fa52)
+- [Installation](#org5af538d)
+- [Development](#org5936470)
 
     <!-- This file is generated automatically from metadata -->
     <!-- File edits may be overwritten! -->
 
 
-<a id="org301ea0a"></a>
+<a id="org4aceefb"></a>
 
 # About
 
 ```markdown
 - Python Package Name: arena_interface
 - Description: Python interface to the Reiser lab ArenaController.
-- Version: 3.0.0
+- Version: 4.0.0
 - Python Version: 3.11
 - Release Date: 2025-09-18
 - Creation Date: 2023-10-17
@@ -32,7 +32,7 @@
 ```
 
 
-<a id="org57935f0"></a>
+<a id="orgeb5fa52"></a>
 
 # Example Usage
 
@@ -138,7 +138,7 @@ Options:
     ```
 
 
-<a id="org0887fa1"></a>
+<a id="org5af538d"></a>
 
 # Installation
 
@@ -263,7 +263,7 @@ The Python code in this library may be installed in any number of ways, chose on
     ```
 
 
-<a id="orgfb39c9b"></a>
+<a id="org5936470"></a>
 
 # Development
 
