@@ -192,6 +192,7 @@ ai.stream_frame(path='./patterns/pat0004.pat', frame_index=0, analog_output_valu
 ai.stream_frames(path='./patterns/pat0004.pat', frame_rate=20, runtime_duration=50)
 ai.play_pattern(pattern_id=3, frame_rate=20, runtime_duration=50)
 ai.play_pattern(pattern_id=3, frame_rate=-20, runtime_duration=50)
+ai.play_pattern(pattern_id=12345, frame_rate=20, runtime_duration=50)
 ai.show_pattern_frame(pattern_id=3, frame_index=0)
 ai.update_pattern_frame(frame_index=1)
 ai.update_pattern_frame(frame_index=2)
