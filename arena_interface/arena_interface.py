@@ -147,10 +147,39 @@ class ArenaInterface():
         self._send_and_receive(cmd_bytes)
 
     def play_pattern(self, pattern_id, frame_rate, runtime_duration):
-        """Play pattern."""
+        """Play pattern with constant frame rate."""
         control_mode = 0x02
         frame_index = 0x00
         gain = 0x10
+        cmd_bytes = struct.pack('<BBBHhHHH',
+                                0x0c,
+                                0x08,
+                                control_mode,
+                                pattern_id,
+                                frame_rate,
+                                frame_index,
+                                gain,
+                                runtime_duration)
+        runtime_duration_s = (runtime_duration * 1.0) / RUNTIME_DURATION_PER_SECOND
+        runtime_duration_ms = int(runtime_duration_s * MILLISECONDS_PER_SECOND)
+        self._debug_print('runtime_duration_ms: ', runtime_duration_ms)
+        ethernet_socket = self._connect_ethernet_socket()
+        self._send_and_receive(cmd_bytes, ethernet_socket)
+
+        while True:
+            self._debug_print('waiting for playing pattern end response...')
+            time.sleep(1)
+            response = self._read(ethernet_socket, 1)
+            if len(response) == 1:
+                response += self._read(ethernet_socket, int(response[0]))
+                break
+        self._debug_print('response: ', response)
+
+    def play_pattern_analog_closed_loop(self, pattern_id, gain, runtime_duration):
+        """Play pattern with frame rate set by analog signal."""
+        control_mode = 0x04
+        frame_index = 0x00
+        frame_rate = 0x00
         cmd_bytes = struct.pack('<BBBHhHHH',
                                 0x0c,
                                 0x08,
