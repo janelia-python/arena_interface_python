@@ -146,18 +146,17 @@ class ArenaInterface():
         cmd_bytes = struct.pack('<BBB', 0x02, 0x06, grayscale_index)
         self._send_and_receive(cmd_bytes)
 
-    def play_pattern(self, pattern_id, frame_rate, runtime_duration):
+    def play_pattern(self, pattern_id, frame_rate, runtime_duration, initial_frame_index=0):
         """Play pattern with constant frame rate."""
         control_mode = 0x02
-        frame_index = 0x00
-        gain = 0x10
-        cmd_bytes = struct.pack('<BBBHhHHH',
+        gain = 0x10 # dummy value
+        cmd_bytes = struct.pack('<BBBHhHhH',
                                 0x0c,
                                 0x08,
                                 control_mode,
                                 pattern_id,
                                 frame_rate,
-                                frame_index,
+                                initial_frame_index,
                                 gain,
                                 runtime_duration)
         runtime_duration_s = (runtime_duration * 1.0) / RUNTIME_DURATION_PER_SECOND
@@ -175,18 +174,17 @@ class ArenaInterface():
                 break
         self._debug_print('response: ', response)
 
-    def play_pattern_analog_closed_loop(self, pattern_id, gain, runtime_duration):
+    def play_pattern_analog_closed_loop(self, pattern_id, gain, runtime_duration, initial_frame_index=0):
         """Play pattern with frame rate set by analog signal."""
         control_mode = 0x04
-        frame_index = 0x00
-        frame_rate = 0x00
-        cmd_bytes = struct.pack('<BBBHhHHH',
+        frame_rate = 0x00 # dummy value
+        cmd_bytes = struct.pack('<BBBHhHhH',
                                 0x0c,
                                 0x08,
                                 control_mode,
                                 pattern_id,
                                 frame_rate,
-                                frame_index,
+                                initial_frame_index,
                                 gain,
                                 runtime_duration)
         runtime_duration_s = (runtime_duration * 1.0) / RUNTIME_DURATION_PER_SECOND
@@ -208,9 +206,9 @@ class ArenaInterface():
         """Show pattern frame."""
         control_mode = 0x03
         frame_rate = 0
-        gain = 0x10
+        gain = 0x10 # dummy value
         runtime_duration = 0
-        cmd_bytes = struct.pack('<BBBHhHHH',
+        cmd_bytes = struct.pack('<BBBHhHhH',
                                 0x0c,
                                 0x08,
                                 control_mode,
