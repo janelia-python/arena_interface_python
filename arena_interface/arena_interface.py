@@ -10,7 +10,6 @@ import pstats
 
 
 PORT = 62222
-IP_ADDRESS = '192.168.10.62'
 PATTERN_HEADER_SIZE = 7
 BYTE_COUNT_PER_PANEL_GRAYSCALE = 132
 REPEAT_LIMIT = 4
@@ -27,10 +26,11 @@ ANALOG_OUTPUT_VALUE_MAX = 4095
 
 class ArenaInterface():
     """Python interface to the Reiser lab ArenaController."""
-    def __init__(self, debug=True):
+    def __init__(self, debug=False):
         """Initialize a ArenaHost instance."""
         self._debug = debug
         self._serial = None
+        self._ethernet_ip_address = ''
         atexit.register(self._exit)
 
     def _debug_print(self, *args):
@@ -52,12 +52,12 @@ class ArenaInterface():
         ethernet_socket = None
         if not self._serial:
             ethernet_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            self._debug_print(f'to {IP_ADDRESS} port {PORT}')
+            self._debug_print(f'to {self._ethernet_ip_address} port {PORT}')
             ethernet_socket.settimeout(SOCKET_TIMEOUT)
             repeat_count = 0
             while repeat_count < REPEAT_LIMIT:
                 try:
-                    ethernet_socket.connect((IP_ADDRESS, PORT))
+                    ethernet_socket.connect((self._ethernet_ip_address, PORT))
                     break
                 except (TimeoutError, OSError):
                     self._debug_print('stream frames ethernet socket timed out')
@@ -92,6 +92,7 @@ class ArenaInterface():
                     repeat_count += 1
             elif self._serial:
                 try:
+                    self._debug_print(f'to {self._serial.port}')
                     bytes_written = self._serial.write(cmd)
                     self._debug_print('bytes_written:', bytes_written)
                     response = self._serial.read(size=1)
@@ -103,10 +104,10 @@ class ArenaInterface():
                     repeat_count += 1
             else:
                 with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-                    self._debug_print(f'to {IP_ADDRESS} port {PORT}')
+                    self._debug_print(f'to {self._ethernet_ip_address} port {PORT}')
                     s.settimeout(SOCKET_TIMEOUT)
                     try:
-                        s.connect((IP_ADDRESS, PORT))
+                        s.connect((self._ethernet_ip_address, PORT))
                         s.sendall(cmd)
                         response = s.recv(1)
                         if len(response) == 1:
@@ -116,13 +117,14 @@ class ArenaInterface():
                         self._debug_print('ethernet socket timed out')
                         repeat_count += 1
         self._debug_print('response: ', response)
-        return response[2:]
+        return response[3:]
 
-    def set_ethernet_mode(self):
+    def set_ethernet_mode(self, ip_address):
         """Set ethernet mode."""
         if self._serial:
             self._serial.close()
         self._serial = None
+        self._ethernet_ip_address = ip_address
         return True
 
     def set_serial_mode(self, port, baudrate=SERIAL_BAUDRATE):
@@ -275,8 +277,8 @@ class ArenaInterface():
         cmd_bytes = struct.pack('<BBH', 0x03, 0x16, refresh_rate)
         self._send_and_receive(cmd_bytes)
 
-    def get_ethernet_url(self):
-        """Get Ethernet URL."""
+    def get_ethernet_ip_address(self):
+        """Get Ethernet IP address."""
         return self._send_and_receive(b'\x01\x66')
 
     def all_on(self):

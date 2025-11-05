@@ -1,13 +1,13 @@
-- [About](#org3a2e8e6)
-- [Example Usage](#orgc7d20c2)
-- [Installation](#orgbdb62f1)
-- [Development](#org6eb3532)
+- [About](#org887b495)
+- [Example Usage](#orgbe7894f)
+- [Installation](#org28738b5)
+- [Development](#org015afca)
 
     <!-- This file is generated automatically from metadata -->
     <!-- File edits may be overwritten! -->
 
 
-<a id="org3a2e8e6"></a>
+<a id="org887b495"></a>
 
 # About
 
@@ -32,7 +32,7 @@
 ```
 
 
-<a id="orgc7d20c2"></a>
+<a id="orgbe7894f"></a>
 
 # Example Usage
 
@@ -42,10 +42,17 @@
 ```python
 from arena_interface import ArenaInterface
 
+# debug=False
+ai = ArenaInterface()
+# or debug=True
 ai = ArenaInterface(debug=True)
-ai.set_ethernet_mode()
-# or
+
+# select serial interface
 ai.set_serial_mode(port='/dev/ttyACM0', baudrate=115200)
+ai.get_ethernet_ip_address() # if you want to switch to ethernet interface
+# or select ethernet interface
+ai.set_ethernet_mode(ip_address='192.168.10.62')
+#
 ai.all_on()
 ai.all_off()
 ai.stream_frame(path='./patterns/pat0004.pat', frame_index=0, analog_output_value=2048)
@@ -141,7 +148,7 @@ Options:
     ```
 
 
-<a id="orgbdb62f1"></a>
+<a id="org28738b5"></a>
 
 # Installation
 
@@ -266,7 +273,7 @@ The Python code in this library may be installed in any number of ways, chose on
     ```
 
 
-<a id="org6eb3532"></a>
+<a id="org015afca"></a>
 
 # Development
 
