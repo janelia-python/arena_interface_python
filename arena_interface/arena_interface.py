@@ -116,6 +116,7 @@ class ArenaInterface():
                         self._debug_print('ethernet socket timed out')
                         repeat_count += 1
         self._debug_print('response: ', response)
+        return response[2:]
 
     def set_ethernet_mode(self):
         """Set ethernet mode."""
@@ -274,9 +275,9 @@ class ArenaInterface():
         cmd_bytes = struct.pack('<BBH', 0x03, 0x16, refresh_rate)
         self._send_and_receive(cmd_bytes)
 
-    # def stop_display(self):
-    #     """Turn all panels off."""
-    #     self._send_and_receive(b'\x01\x30')
+    def get_ethernet_url(self):
+        """Get Ethernet URL."""
+        return self._send_and_receive(b'\x01\x66')
 
     def all_on(self):
         """Turn all panels on."""

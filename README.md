@@ -1,22 +1,22 @@
-- [About](#org4aceefb)
-- [Example Usage](#orgeb5fa52)
-- [Installation](#org5af538d)
-- [Development](#org5936470)
+- [About](#org3a2e8e6)
+- [Example Usage](#orgc7d20c2)
+- [Installation](#orgbdb62f1)
+- [Development](#org6eb3532)
 
     <!-- This file is generated automatically from metadata -->
     <!-- File edits may be overwritten! -->
 
 
-<a id="org4aceefb"></a>
+<a id="org3a2e8e6"></a>
 
 # About
 
 ```markdown
 - Python Package Name: arena_interface
 - Description: Python interface to the Reiser lab ArenaController.
-- Version: 4.0.0
+- Version: 5.0.0
 - Python Version: 3.11
-- Release Date: 2025-09-18
+- Release Date: 2025-11-05
 - Creation Date: 2023-10-17
 - License: BSD-3-Clause
 - URL: https://github.com/janelia-python/arena_interface_python
@@ -32,7 +32,7 @@
 ```
 
 
-<a id="orgeb5fa52"></a>
+<a id="orgc7d20c2"></a>
 
 # Example Usage
 
@@ -52,10 +52,13 @@ ai.stream_frame(path='./patterns/pat0004.pat', frame_index=0, analog_output_valu
 ai.stream_frames(path='./patterns/pat0004.pat', frame_rate=20, runtime_duration=50)
 ai.play_pattern(pattern_id=3, frame_rate=20, runtime_duration=50)
 ai.play_pattern(pattern_id=3, frame_rate=-20, runtime_duration=50)
+ai.play_pattern(pattern_id=3, frame_rate=20, runtime_duration=50, initial_frame_index=4)
+ai.play_pattern(pattern_id=12345, frame_rate=20, runtime_duration=50)
 ai.show_pattern_frame(pattern_id=3, frame_index=0)
 ai.update_pattern_frame(frame_index=1)
 ai.update_pattern_frame(frame_index=2)
 ai.stream_pattern_frame_indicies(pattern_id=3, frame_index_min=0, frame_index_max=15, frame_rate=20, runtime_duration=50)
+ai.play_pattern_analog_closed_loop(pattern_id=3, gain=20, runtime_duration=50)
 ```
 
 
@@ -138,7 +141,7 @@ Options:
     ```
 
 
-<a id="org5af538d"></a>
+<a id="orgbdb62f1"></a>
 
 # Installation
 
@@ -263,7 +266,7 @@ The Python code in this library may be installed in any number of ways, chose on
     ```
 
 
-<a id="org5936470"></a>
+<a id="org6eb3532"></a>
 
 # Development
 
