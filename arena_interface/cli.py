@@ -1,64 +1,246 @@
 """Command line interface for the ArenaHost."""
-import click
+
+from __future__ import annotations
+
+import statistics
+import time
 from pathlib import Path
 
-from .arena_interface import ArenaInterface
+import click
+
+from .arena_interface import ArenaInterface, SERIAL_BAUDRATE
+
+
+pass_arena_interface = click.make_pass_decorator(ArenaInterface)
 
 
 @click.group()
+@click.option(
+    "--ethernet",
+    "ethernet_ip",
+    envvar="ARENA_ETH_IP",
+    default=None,
+    help="Firmware Ethernet IP address (e.g. 192.168.1.50)",
+)
+@click.option(
+    "--serial",
+    "serial_port",
+    envvar="ARENA_SERIAL_PORT",
+    default=None,
+    help="Serial port (e.g. COM3 or /dev/ttyACM0)",
+)
+@click.option(
+    "--baudrate",
+    default=SERIAL_BAUDRATE,
+    show_default=True,
+    help="Serial baudrate (only used with --serial)",
+)
+@click.option("--debug/--no-debug", default=False, show_default=True)
 @click.pass_context
-def cli(ctx):
-    ctx.obj = ArenaInterface(debug=False)
+def cli(ctx: click.Context, ethernet_ip: str | None, serial_port: str | None, baudrate: int, debug: bool):
+    """ArenaController host CLI."""
+    ai = ArenaInterface(debug=debug)
+
+    if ethernet_ip and serial_port:
+        raise click.UsageError("Choose only one transport: --ethernet or --serial")
+
+    if ethernet_ip:
+        ai.set_ethernet_mode(ethernet_ip)
+    elif serial_port:
+        ai.set_serial_mode(serial_port, baudrate=baudrate)
+    else:
+        raise click.UsageError(
+            "No transport selected. Provide --ethernet IP or --serial PORT "
+            "(or set ARENA_ETH_IP / ARENA_SERIAL_PORT)."
+        )
+
+    ctx.obj = ai
+    ctx.call_on_close(ai.close)
+
 
 @cli.command()
-@click.pass_obj
-def all_off(ai):
-    ai.all_off()
+@pass_arena_interface
+def all_off(arena_interface: ArenaInterface):
+    """Turn all LEDs off."""
+    arena_interface.all_off()
+
 
 @cli.command()
-@click.pass_obj
-def display_reset(ai):
-    ai.display_reset()
+@pass_arena_interface
+def all_on(arena_interface: ArenaInterface):
+    """Turn all LEDs on."""
+    arena_interface.all_on()
+
 
 @cli.command()
-@click.argument('grayscale-index', nargs=1, type=int)
-@click.pass_obj
-def switch_grayscale(ai, grayscale_index):
-    ai.switch_grayscale(grayscale_index)
+@click.argument("refresh_rate")
+@pass_arena_interface
+def set_refresh_rate(arena_interface: ArenaInterface, refresh_rate: str):
+    """Set display refresh rate."""
+    arena_interface.set_refresh_rate(int(refresh_rate))
+
 
 @cli.command()
-@click.argument('pattern-id', nargs=1, type=int)
-@click.argument('frame-rate', nargs=1, type=int)
-@click.argument('runtime-duration', nargs=1, type=int)
-@click.pass_obj
-def play_pattern(ai, pattern_id, frame_rate, runtime_duration):
-    ai.play_pattern(pattern_id, frame_rate, runtime_duration)
+@pass_arena_interface
+def display_reset(arena_interface: ArenaInterface):
+    """Reset display."""
+    arena_interface.display_reset()
+
 
 @cli.command()
-@click.argument('refresh-rate', nargs=1, type=int)
-@click.pass_obj
-def set_refresh_rate(ai, refresh_rate):
-    ai.set_refresh_rate(refresh_rate)
+@pass_arena_interface
+def switch_grayscale(arena_interface: ArenaInterface):
+    """Switch display to grayscale."""
+    arena_interface.switch_grayscale()
+
 
 @cli.command()
-@click.pass_obj
-def all_on(ai):
-    ai.all_on()
+@pass_arena_interface
+def switch_rgb(arena_interface: ArenaInterface):
+    """Switch display to RGB."""
+    arena_interface.switch_rgb()
+
 
 @cli.command()
-@click.argument('path', nargs=1, type=click.Path(exists=True))
-@click.argument('frame-index', nargs=1, type=int)
-@click.pass_obj
-def stream_frame(ai, path, frame_index):
-    abs_path = Path(path).absolute()
-    ai.stream_frame(abs_path, frame_index)
+@pass_arena_interface
+def reset_perf_stats(arena_interface: ArenaInterface):
+    """Reset performance counters on the device."""
+    arena_interface.reset_perf_stats()
+    click.echo("OK")
+
 
 @cli.command()
-@click.argument('path', nargs=1, type=click.Path(exists=True))
-@click.argument('frame-rate', nargs=1, type=int)
-@click.argument('runtime-duration', nargs=1, type=int)
-@click.pass_obj
-def stream_frames(ai, path, frame_rate, runtime_duration):
-    abs_path = Path(path).absolute()
-    ai.stream_frames(abs_path, frame_rate, runtime_duration)
+@pass_arena_interface
+def get_perf_stats(arena_interface: ArenaInterface):
+    """Fetch raw performance stats snapshot."""
+    stats = arena_interface.get_perf_stats()
+    # Print as hex so it's easy to copy/paste into analysis scripts.
+    click.echo(stats.hex())
 
+
+def _percentile(sorted_values, pct: float) -> float:
+    if not sorted_values:
+        return float("nan")
+    idx = int((pct / 100.0) * (len(sorted_values) - 1))
+    return float(sorted_values[idx])
+
+
+@cli.command()
+@click.option("--cmd-iters", default=2000, show_default=True, help="Iterations for command RTT test")
+@click.option("--spf-rate", default=200.0, show_default=True, help="Target Hz for update_pattern_frame loop")
+@click.option("--spf-seconds", default=5.0, show_default=True, help="Seconds to run update_pattern_frame loop")
+@click.option("--spf-pattern-id", default=10, show_default=True)
+@click.option("--spf-frame-min", default=0, show_default=True)
+@click.option("--spf-frame-max", default=1000, show_default=True)
+@click.option(
+    "--stream-path",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    default=None,
+    help="Optional .pattern file to stream",
+)
+@click.option("--stream-rate", default=200.0, show_default=True, help="Target FPS for stream_frames")
+@click.option("--stream-seconds", default=5.0, show_default=True, help="Seconds to run stream_frames")
+@click.option("--stream-coalesced/--stream-chunked", default=True, show_default=True)
+@click.option("--progress-interval", default=1.0, show_default=True, help="Progress print interval (seconds)")
+@pass_arena_interface
+def bench(
+    arena_interface: ArenaInterface,
+    cmd_iters: int,
+    spf_rate: float,
+    spf_seconds: float,
+    spf_pattern_id: int,
+    spf_frame_min: int,
+    spf_frame_max: int,
+    stream_path: Path | None,
+    stream_rate: float,
+    stream_seconds: float,
+    stream_coalesced: bool,
+    progress_interval: float,
+):
+    """Run a small, repeatable host-side benchmark suite.
+
+    Pair this with your QS log capture so the device-side PERF_* records can be
+    compared across Ethernet backends.
+    """
+    click.echo("\n=== ArenaHost bench ===")
+
+    # ------------------------------------------------------------------
+    # Command RTT test (small request/response)
+    # ------------------------------------------------------------------
+    arena_interface.reset_perf_stats()
+    rtts_ms = []
+    for _ in range(cmd_iters):
+        t0 = time.perf_counter_ns()
+        arena_interface.get_perf_stats()
+        t1 = time.perf_counter_ns()
+        rtts_ms.append((t1 - t0) / 1e6)
+
+    rtts_ms_sorted = sorted(rtts_ms)
+    click.echo("\n-- command_rtt (get_perf_stats) --")
+    click.echo(f"samples: {len(rtts_ms_sorted)}")
+    click.echo(
+        "mean={:.3f} ms  min={:.3f}  p50={:.3f}  p95={:.3f}  p99={:.3f}  max={:.3f}".format(
+            statistics.mean(rtts_ms_sorted),
+            rtts_ms_sorted[0],
+            _percentile(rtts_ms_sorted, 50),
+            _percentile(rtts_ms_sorted, 95),
+            _percentile(rtts_ms_sorted, 99),
+            rtts_ms_sorted[-1],
+        )
+    )
+
+    # ------------------------------------------------------------------
+    # SPF (Show Pattern Frame) update loop
+    # ------------------------------------------------------------------
+    click.echo("\n-- spf_update (show_pattern_frame + update_pattern_frame loop) --")
+    arena_interface.reset_perf_stats()
+    arena_interface.show_pattern_frame(spf_pattern_id, spf_frame_min, int(spf_rate))
+
+    start_ns = time.perf_counter_ns()
+    end_ns = start_ns + int(spf_seconds * 1e9)
+    period_ns = int(1e9 / spf_rate) if spf_rate > 0 else 0
+
+    deadline_ns = start_ns
+    frame = spf_frame_min
+    updates = 0
+
+    while time.perf_counter_ns() < end_ns:
+        arena_interface.update_pattern_frame(frame)
+        updates += 1
+        frame += 1
+        if frame > spf_frame_max:
+            frame = spf_frame_min
+
+        if period_ns:
+            deadline_ns += period_ns
+            while time.perf_counter_ns() < deadline_ns:
+                pass
+
+    arena_interface.all_off()
+    elapsed_s = (time.perf_counter_ns() - start_ns) / 1e9
+    achieved_hz = updates / elapsed_s if elapsed_s > 0 else 0.0
+    click.echo(f"updates: {updates}, elapsed_s: {elapsed_s:.3f}, achieved: {achieved_hz:.1f} Hz")
+
+    # ------------------------------------------------------------------
+    # Stream frames (optional)
+    # ------------------------------------------------------------------
+    if stream_path is not None:
+        click.echo("\n-- stream_frames --")
+        arena_interface.reset_perf_stats()
+        stats = arena_interface.stream_frames(
+            str(stream_path),
+            float(stream_rate),
+            float(stream_seconds),
+            "constant",
+            1.0,
+            0.0,
+            stream_cmd_coalesced=stream_coalesced,
+            progress_interval_s=progress_interval,
+        )
+        click.echo(f"host_stats: {stats}")
+
+    click.echo("\nBench done. Capture the QS PERF_* lines to compare device-side timings.\n")
+
+
+if __name__ == "__main__":
+    cli()

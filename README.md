@@ -1,28 +1,28 @@
-- [About](#org887b495)
-- [Example Usage](#orgbe7894f)
-- [Installation](#org28738b5)
-- [Development](#org015afca)
+- [About](#org0358e8a)
+- [Example Usage](#org597a0fd)
+- [Installation](#org024f908)
+- [Development](#org9f1cfff)
 
     <!-- This file is generated automatically from metadata -->
     <!-- File edits may be overwritten! -->
 
 
-<a id="org887b495"></a>
+<a id="org0358e8a"></a>
 
 # About
 
 ```markdown
 - Python Package Name: arena_interface
 - Description: Python interface to the Reiser lab ArenaController.
-- Version: 5.0.0
+- Version: 5.1.0
 - Python Version: 3.11
-- Release Date: 2025-11-05
+- Release Date: 2026-03-04
 - Creation Date: 2023-10-17
 - License: BSD-3-Clause
 - URL: https://github.com/janelia-python/arena_interface_python
 - Author: Peter Polidoro
 - Email: peter@polidoro.io
-- Copyright: 2025 Howard Hughes Medical Institute
+- Copyright: 2026 Howard Hughes Medical Institute
 - References:
   - https://github.com/janelia-arduino/ArenaController
 - Dependencies:
@@ -32,7 +32,7 @@
 ```
 
 
-<a id="orgbe7894f"></a>
+<a id="org597a0fd"></a>
 
 # Example Usage
 
@@ -147,8 +147,14 @@ Options:
     arena-interface switch-grayscale 0 # 0=binary, 1=grayscale
     ```
 
+3.  benchmarking
 
-<a id="org28738b5"></a>
+    ```sh
+    python -m arena_interface.cli --ethernet 192.168.x.x bench --stream-path my.pattern
+    ```
+
+
+<a id="org024f908"></a>
 
 # Installation
 
@@ -202,7 +208,7 @@ make guix-container
     
     Udev may be used to detect when a device is plugged into the computer and automatically give permission to open that device.
     
-    If you plug a sensor into your computer and attempt to open it and get an error such as: "FATAL: cannot open /dev/ttyACM0: Permission denied", then you need to install udev rules to give permission to open that device.
+    If you plug a sensor into your computer and attempt to open it and get an error such as: &ldquo;FATAL: cannot open /dev/ttyACM0: Permission denied&rdquo;, then you need to install udev rules to give permission to open that device.
     
     Udev rules may be downloaded as a file and placed in the appropriate directory using these instructions:
     
@@ -273,7 +279,7 @@ The Python code in this library may be installed in any number of ways, chose on
     ```
 
 
-<a id="org015afca"></a>
+<a id="org9f1cfff"></a>
 
 # Development
 
