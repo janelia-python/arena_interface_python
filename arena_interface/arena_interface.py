@@ -8,6 +8,8 @@ import struct
 import time
 import serial
 import atexit
+import re
+import subprocess
 
 import datetime
 import json
@@ -83,6 +85,18 @@ class ArenaInterface():
         s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         # Low latency for small request/response commands.
         s.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        # On Linux, TCP_QUICKACK asks the kernel to ACK promptly, which can
+        # reduce delayed-ACK induced jitter for tiny request/response loops.
+        if hasattr(socket, "TCP_QUICKACK"):
+            try:
+                s.setsockopt(socket.IPPROTO_TCP, socket.TCP_QUICKACK, 1)
+            except OSError:
+                pass
+        # Keepalive can help detect dead peers on long runs.
+        try:
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
+        except OSError:
+            pass
         s.settimeout(SOCKET_TIMEOUT)
         s.connect((self._ethernet_ip_address, ETHERNET_SERVER_PORT))
         return s
@@ -535,7 +549,7 @@ class ArenaInterface():
             frames = [blob[i * frame_size:(i + 1) * frame_size] for i in range(num_frames)]
 
         runtime_duration_s = float(runtime_duration) / float(RUNTIME_DURATION_PER_SECOND)
-        frames_total = int(runtime_duration_s * float(frame_rate))
+        frames_target = int(runtime_duration_s * float(frame_rate)) if frame_rate else 0
         frame_period_ns = int((1.0 / float(frame_rate)) * 1e9) if frame_rate else 0
 
         analog_update_period_ns = int((1.0 / float(analog_update_rate)) * 1e9) if analog_update_rate else 0
@@ -567,11 +581,39 @@ class ArenaInterface():
         analog_value_cached = int(round(analog_offset))
 
         start_time_ns = time.perf_counter_ns()
+        end_time_ns = start_time_ns + int(runtime_duration_s * 1e9)
+
+        # Schedule the first frame "immediately" and then advance by period.
+        next_frame_deadline_ns = start_time_ns
+
         next_progress_ns = None
         if progress_interval_s and (progress_interval_s > 0):
             next_progress_ns = start_time_ns + int(progress_interval_s * 1e9)
 
-        for i in range(frames_total):
+        i = 0
+        while True:
+            now_ns = time.perf_counter_ns()
+            if now_ns >= end_time_ns:
+                break
+
+            # Rate limiting: hybrid sleep + spin. This keeps CPU load reasonable,
+            # but still gives predictable timing at ~200Hz+.
+            if frame_period_ns:
+                while True:
+                    now_ns = time.perf_counter_ns()
+                    remaining_ns = next_frame_deadline_ns - now_ns
+                    if remaining_ns <= 0:
+                        break
+                    if remaining_ns > 2_000_000:  # > 2ms
+                        time.sleep((remaining_ns - 1_000_000) / 1e9)  # leave ~1ms for spin
+                    else:
+                        pass
+
+                # If we crossed the end-of-window while waiting, stop without
+                # starting another frame.
+                if time.perf_counter_ns() >= end_time_ns:
+                    break
+
             frame_index = i % num_frames
             frame = frames[frame_index]
 
@@ -611,15 +653,17 @@ class ArenaInterface():
                 if now_ns >= next_progress_ns:
                     elapsed_s = (now_ns - start_time_ns) / 1e9
                     rate_hz = frames_streamed / elapsed_s if elapsed_s > 0 else 0.0
-                    print(f'progress: {frames_streamed}/{frames_total} frames ({rate_hz:.1f} Hz)')
+                    if frames_target:
+                        print(f'progress: {frames_streamed}/{frames_target} frames ({rate_hz:.1f} Hz)')
+                    else:
+                        print(f'progress: {frames_streamed} frames ({rate_hz:.1f} Hz)')
                     next_progress_ns += int(progress_interval_s * 1e9)
 
-            # Rate limiting (busy-wait)
             if frame_period_ns:
-                while (time.perf_counter_ns() - start_time_ns) < ((i + 1) * frame_period_ns):
-                    pass
+                next_frame_deadline_ns += frame_period_ns
+            i += 1
 
-        # End the mode
+# End the mode
         self._send_and_receive(bytes([1, 0]), ethernet_socket)
 
         elapsed_s = (time.perf_counter_ns() - start_time_ns) / 1e9
@@ -633,6 +677,8 @@ class ArenaInterface():
             "rate_hz": rate_hz,
             "bytes_sent": bytes_sent,
             "tx_mbps": mbps,
+            "duration_requested_s": runtime_duration_s,
+            "frames_target": frames_target,
         }
 
     def all_off_str(self):
@@ -726,12 +772,66 @@ class ArenaInterface():
             except OSError:
                 pass
 
+        # Best-effort interface / route metadata (useful when comparing switches/NICs).
+        peer_ip = meta.get("ethernet_ip")
+        if peer_ip:
+            try:
+                route_out = subprocess.check_output(["ip", "route", "get", str(peer_ip)], text=True).strip()
+                meta["net_route_get"] = route_out
+                m = re.search(r"\bdev\s+(\S+)", route_out)
+                iface = m.group(1) if m else None
+                if iface:
+                    info: dict[str, object] = {"interface": iface}
+                    sysfs_base = f"/sys/class/net/{iface}"
+
+                    def _read_sysfs(name: str) -> str | None:
+                        try:
+                            with open(f"{sysfs_base}/{name}", "r", encoding="utf-8") as f:
+                                return f.read().strip()
+                        except Exception:
+                            return None
+
+                    mtu = _read_sysfs("mtu")
+                    if mtu is not None:
+                        try:
+                            info["mtu"] = int(mtu)
+                        except ValueError:
+                            info["mtu"] = mtu
+
+                    speed = _read_sysfs("speed")
+                    if speed is not None:
+                        try:
+                            info["speed_mbps"] = int(speed)
+                        except ValueError:
+                            info["speed_mbps"] = speed
+
+                    duplex = _read_sysfs("duplex")
+                    if duplex is not None:
+                        info["duplex"] = duplex
+
+                    operstate = _read_sysfs("operstate")
+                    if operstate is not None:
+                        info["operstate"] = operstate
+
+                    mac = _read_sysfs("address")
+                    if mac is not None:
+                        info["mac"] = mac
+
+                    meta["net_interface"] = info
+            except Exception:
+                # Non-Linux hosts (or minimal containers) may not have `ip` or sysfs.
+                pass
+
+
         return meta
 
     def bench_connect_time(self, iters: int = 200) -> dict:
         """Measure TCP connect() time to the controller (Ethernet only)."""
         if not self._ethernet_ip_address:
             raise RuntimeError("bench_connect_time requires Ethernet mode (set_ethernet_mode).")
+
+        # Clear any prior socket error so results are per-run.
+        self._socket_last_error = None
 
         samples_ms: list[float] = []
         errors = 0
@@ -788,6 +888,10 @@ class ArenaInterface():
         """
         if connect_mode not in {"persistent", "new_connection"}:
             raise ValueError("connect_mode must be 'persistent' or 'new_connection'")
+
+        # Clear any prior socket error so results are per-run.
+        self._socket_last_error = None
+
 
         reconnects_before = self.get_socket_reconnects(reset=False)
 
@@ -886,6 +990,9 @@ class ArenaInterface():
         """
         if pacing not in {"target", "max"}:
             raise ValueError("pacing must be 'target' or 'max'")
+
+        # Clear any prior socket error so results are per-run.
+        self._socket_last_error = None
 
         reconnects_before = self.get_socket_reconnects(reset=False)
 
@@ -1004,6 +1111,9 @@ class ArenaInterface():
         - `pattern_path` can be either a `.pattern` file (frame_size header) or
           a `.pat` file from the `patterns/` directory.
         """
+        # Clear any prior socket error so results are per-run.
+        self._socket_last_error = None
+
         reconnects_before = self.get_socket_reconnects(reset=False)
 
         self.reset_perf_stats()

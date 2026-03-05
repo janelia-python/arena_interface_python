@@ -330,6 +330,10 @@ arena-interface --ethernet 192.168.10.104 bench \
   --stream-path ./patterns/pat0004.pat
 #+END_SRC
 
+Notes:
+
+- =--stream-seconds= is wall-clock duration. If the firmware/host link can't sustain =--stream-rate-hz=, the run still ends after that duration and =achieved_hz= will be lower.
+
 Tips for comparing Ethernet switches/hosts/LANs:
 
 - Keep the firmware build and the pattern file constant across runs.

@@ -196,6 +196,10 @@ Options:
       --stream-path ./patterns/pat0004.pat
     ```
 
+    Notes:
+
+    - `--stream-seconds` is wall-clock duration. If the firmware/host link can't sustain `--stream-rate-hz`, the run still ends after that duration and `achieved` will be lower.
+
     Tips for comparing Ethernet switches/hosts/LANs:
 
     - Keep the firmware build and the pattern file constant across runs.
