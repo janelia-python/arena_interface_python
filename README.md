@@ -56,7 +56,14 @@ ai.set_ethernet_mode(ip_address='192.168.10.62')
 ai.all_on()
 ai.all_off()
 ai.stream_frame(path='./patterns/pat0004.pat', frame_index=0, analog_output_value=2048)
-ai.stream_frames(path='./patterns/pat0004.pat', frame_rate=20, runtime_duration=50)
+ai.stream_frames(
+    pattern_path='./patterns/pat0004.pat',
+    frame_rate=20,
+    runtime_duration=50,
+    analog_out_waveform='constant',
+    analog_update_rate=1.0,
+    analog_frequency=0.0,
+)
 ai.play_pattern(pattern_id=3, frame_rate=20, runtime_duration=50)
 ai.play_pattern(pattern_id=3, frame_rate=-20, runtime_duration=50)
 ai.play_pattern(pattern_id=3, frame_rate=20, runtime_duration=50, initial_frame_index=4)
@@ -149,9 +156,52 @@ Options:
 
 3.  benchmarking
 
-    ```sh
-    python -m arena_interface.cli --ethernet 192.168.x.x bench --stream-path my.pattern
+    Benchmarks are available as methods on `ArenaInterface` (handy in IPython)
+    and via the CLI. Host-side results are most useful paired with QS log
+    capture so you can compare firmware-side `PERF_*` events alongside the
+    host-side timings.
+
+    ```python
+    from arena_interface import ArenaInterface
+
+    ai = ArenaInterface(debug=True)
+    ai.set_ethernet_mode("192.168.10.104")
+
+    # 1) Small command RTT (latency)
+    ai.bench_command_rtt(iters=2000)
+
+    # 2) SPF update loop (paced vs max)
+    ai.bench_spf_updates(rate_hz=200, seconds=5, pattern_id=10, pacing="target")
+    ai.bench_spf_updates(rate_hz=200, seconds=5, pattern_id=10, pacing="max")
+
+    # 3) Stream frames (throughput) - accepts .pat or .pattern
+    ai.bench_stream_frames("./patterns/pat0004.pat", frame_rate=200, seconds=5, progress_interval_s=0)
+
+    # 4) Full suite + save JSONL for later comparison across switches/hosts
+    suite = ai.bench_suite(
+        label="lab-switch-A / laptop-1",
+        include_connect=True,
+        stream_path="./patterns/pat0004.pat",
+    )
+    ai.write_bench_jsonl("bench_results.jsonl", suite)
     ```
+
+    ```sh
+    arena-interface --ethernet 192.168.10.104 bench \
+      --label "lab-switch-A / laptop-1" \
+      --json-out bench_results.jsonl \
+      --include-connect \
+      --cmd-connect-mode persistent \
+      --spf-pacing target \
+      --stream-path ./patterns/pat0004.pat
+    ```
+
+    Tips for comparing Ethernet switches/hosts/LANs:
+
+    - Keep the firmware build and the pattern file constant across runs.
+    - Vary only the network path (switch/cable/VLAN/host) and change `--label`.
+    - Capture QS logs in parallel so you can analyze device-side `PERF_UPD` and
+      `PERF_NET` alongside the host-side results.
 
 
 <a id="org024f908"></a>

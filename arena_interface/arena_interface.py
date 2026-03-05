@@ -9,6 +9,12 @@ import time
 import serial
 import atexit
 
+import datetime
+import json
+import platform
+import statistics
+import sys
+
 import cProfile
 import pstats
 
@@ -42,6 +48,8 @@ class ArenaInterface():
         self._serial = None
         self._ethernet_ip_address = ''
         self._ethernet_socket: socket.socket | None = None
+        self._socket_reconnects: int = 0
+        self._socket_last_error: str | None = None
         atexit.register(self._exit)
 
     def _debug_print(self, *args):
@@ -59,36 +67,48 @@ class ArenaInterface():
             # Best-effort cleanup only.
             pass
 
-    def _connect_ethernet_socket(self, repeat_count=10, reuse=True):
-        """Connect (or reuse) a TCP socket to the firmware's Ethernet server."""
+    def _open_ethernet_socket(self) -> socket.socket:
+        """Open a new TCP socket to the firmware's Ethernet server.
+
+        This does **not** reuse or modify the persistent socket stored on the
+        instance. Use `_connect_ethernet_socket(reuse=True)` if you want
+        connection reuse.
+        """
         if not self._ethernet_ip_address:
             raise RuntimeError(
                 "Ethernet mode not set. Call set_ethernet_mode(ip) or pass --ethernet IP."
             )
 
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        # Low latency for small request/response commands.
+        s.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        s.settimeout(SOCKET_TIMEOUT)
+        s.connect((self._ethernet_ip_address, ETHERNET_SERVER_PORT))
+        return s
+
+    def _connect_ethernet_socket(self, repeat_count: int = 10, reuse: bool = True) -> socket.socket:
+        """Connect (or reuse) a TCP socket to the firmware's Ethernet server."""
         if reuse and (self._ethernet_socket is not None):
             return self._ethernet_socket
 
-        # Ensure we don't accidentally keep a stale socket around.
-        self._close_ethernet_socket()
+        # Only close the stored persistent socket when we're about to replace it.
+        if reuse:
+            self._close_ethernet_socket()
 
-        last_exc = None
-        for _ in range(repeat_count):
+        last_exc: Exception | None = None
+        for _ in range(int(repeat_count)):
+            s: socket.socket | None = None
             try:
-                s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-                # Low latency for small request/response commands.
-                s.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-                s.settimeout(SOCKET_TIMEOUT)
-                s.connect((self._ethernet_ip_address, ETHERNET_SERVER_PORT))
-
+                s = self._open_ethernet_socket()
                 if reuse:
                     self._ethernet_socket = s
                 return s
             except (ConnectionRefusedError, TimeoutError, OSError) as e:
                 last_exc = e
                 try:
-                    s.close()
+                    if s is not None:
+                        s.close()
                 except Exception:
                     pass
                 # Short backoff; firmware may still be booting.
@@ -158,6 +178,8 @@ class ArenaInterface():
             except (OSError, ConnectionError) as e:
                 if ethernet_socket is not None:
                     raise
+                self._socket_reconnects += 1
+                self._socket_last_error = repr(e)
                 self._debug_print(f"socket error ({e}), reconnecting")
                 self._close_ethernet_socket()
                 sock = self._connect_ethernet_socket(reuse=True)
@@ -456,30 +478,61 @@ class ArenaInterface():
         -----
         - `runtime_duration` uses the same unit as TRIAL_PARAMS: **100ms ticks**.
           For example, `runtime_duration=50` streams for ~5 seconds.
-        - The `.pattern` file format expected here is:
-            [uint32_le frame_size][frame0 bytes][frame1 bytes]...
+        - `pattern_path` may be either:
+            - a `.pattern` file: [uint32_le frame_size][frame0 bytes][frame1 bytes]...
+            - a `.pat` file: [<HHBBB header (7 bytes)>][frame bytes...]
 
         Returns
         -------
         dict
             Basic host-side throughput stats.
         """
-        # Read pattern file: [uint32 frame_size][frame0][frame1]...
-        with open(pattern_path, 'rb') as f:
-            frame_size_raw = f.read(4)
-            if len(frame_size_raw) != 4:
-                raise ValueError(f"{pattern_path} is too small to be a .pattern file")
-            frame_size = struct.unpack('<I', frame_size_raw)[0]
-            if frame_size <= 0:
-                raise ValueError(f"invalid frame_size={frame_size} in {pattern_path}")
+                # Read frames from either:
+        #   1) ".pattern" format: [uint32_le frame_size][frame0 bytes][frame1 bytes]...
+        #   2) ".pat" format (as in ./patterns/*.pat): [<HHBBB header (7 bytes)>][frame bytes...]
+        #
+        # The STREAM_FRAME command only supports uint16 payload lengths, so very
+        # large frames (>65535 bytes) are not supported.
+        with open(pattern_path, "rb") as f:
+            file_bytes = f.read()
 
-            file_size = os.path.getsize(pattern_path)
-            if (file_size - 4) % frame_size != 0:
+        file_size = len(file_bytes)
+        frames: list[bytes] = []
+        num_frames = 0
+
+        # Try ".pattern"
+        if file_size >= 4:
+            frame_size = struct.unpack("<I", file_bytes[:4])[0]
+            if 0 < frame_size <= 65535 and (file_size - 4) > 0 and ((file_size - 4) % frame_size == 0):
+                num_frames = int((file_size - 4) / frame_size)
+                frames = [
+                    file_bytes[4 + (i * frame_size): 4 + ((i + 1) * frame_size)]
+                    for i in range(num_frames)
+                ]
+
+        # Fall back to ".pat"
+        if not frames:
+            if file_size < PATTERN_HEADER_SIZE:
+                raise ValueError(f"{pattern_path} is too small to be a .pattern or .pat file")
+            header = struct.unpack("<HHBBB", file_bytes[:PATTERN_HEADER_SIZE])
+            frame_count = int(header[0]) * int(header[1])
+            if frame_count <= 0:
+                raise ValueError(f"invalid .pat header frame_count={frame_count} in {pattern_path}")
+
+            blob = file_bytes[PATTERN_HEADER_SIZE:]
+            if len(blob) % frame_count != 0:
                 raise ValueError(
-                    f"file size {file_size} not compatible with frame_size {frame_size} in {pattern_path}"
+                    f".pat size {file_size} not compatible with frame_count {frame_count} in {pattern_path}"
                 )
-            num_frames = int((file_size - 4) / frame_size)
-            frames = [f.read(frame_size) for _ in range(num_frames)]
+
+            frame_size = int(len(blob) / frame_count)
+            if frame_size > 65535:
+                raise ValueError(
+                    f".pat frame_size {frame_size} exceeds STREAM_FRAME uint16 limit in {pattern_path}"
+                )
+
+            num_frames = int(frame_count)
+            frames = [blob[i * frame_size:(i + 1) * frame_size] for i in range(num_frames)]
 
         runtime_duration_s = float(runtime_duration) / float(RUNTIME_DURATION_PER_SECOND)
         frames_total = int(runtime_duration_s * float(frame_rate))
@@ -589,3 +642,470 @@ class ArenaInterface():
     def all_on_str(self):
         """Turn all panels on with string."""
         self._send_and_receive('ALL_ON')
+
+    # ---------------------------------------------------------------------
+    # Benchmark helpers (host-side)
+    # ---------------------------------------------------------------------
+
+    def get_socket_reconnects(self, reset: bool = False) -> int:
+        """Return the number of automatic Ethernet reconnects seen so far.
+
+        Notes
+        -----
+        - This counter only increments when `_send_and_receive()` is using the
+          instance's persistent Ethernet socket (i.e. you did not pass an explicit
+          `ethernet_socket=` argument).
+        """
+        n = int(self._socket_reconnects)
+        if reset:
+            self._socket_reconnects = 0
+        return n
+
+    @staticmethod
+    def _bench_percentile(sorted_values: list[float], pct: float) -> float:
+        """Nearest-rank percentile on a *sorted* list."""
+        if not sorted_values:
+            return float("nan")
+        if pct <= 0:
+            return float(sorted_values[0])
+        if pct >= 100:
+            return float(sorted_values[-1])
+        idx = int((pct / 100.0) * (len(sorted_values) - 1))
+        return float(sorted_values[idx])
+
+    @classmethod
+    def _bench_summarize_ms(cls, samples_ms: list[float]) -> dict:
+        """Summarize a list of millisecond samples."""
+        values = sorted(float(x) for x in samples_ms)
+        if not values:
+            return {
+                "samples": 0,
+                "mean_ms": float("nan"),
+                "min_ms": float("nan"),
+                "p50_ms": float("nan"),
+                "p95_ms": float("nan"),
+                "p99_ms": float("nan"),
+                "max_ms": float("nan"),
+            }
+        return {
+            "samples": int(len(values)),
+            "mean_ms": float(statistics.mean(values)),
+            "min_ms": float(values[0]),
+            "p50_ms": cls._bench_percentile(values, 50),
+            "p95_ms": cls._bench_percentile(values, 95),
+            "p99_ms": cls._bench_percentile(values, 99),
+            "max_ms": float(values[-1]),
+        }
+
+    def bench_metadata(self, label: str | None = None) -> dict:
+        """Return a small metadata blob to attach to benchmark results."""
+        try:
+            from .__about__ import __version__ as pkg_version  # type: ignore
+        except Exception:
+            pkg_version = None
+
+        meta = {
+            "label": label,
+            "utc": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            "hostname": platform.node(),
+            "platform": platform.platform(),
+            "python": sys.version.split()[0],
+            "package_version": pkg_version,
+            "transport": "serial" if (self._serial is not None) else "ethernet",
+            "ethernet_ip": self._ethernet_ip_address if self._ethernet_ip_address else None,
+            "serial_port": getattr(self._serial, "port", None) if self._serial is not None else None,
+        }
+
+        # Best-effort socket endpoint capture (only if a persistent socket exists).
+        if self._ethernet_socket is not None:
+            try:
+                local = self._ethernet_socket.getsockname()
+                peer = self._ethernet_socket.getpeername()
+                meta["ethernet_local"] = {"ip": local[0], "port": local[1]}
+                meta["ethernet_peer"] = {"ip": peer[0], "port": peer[1]}
+            except OSError:
+                pass
+
+        return meta
+
+    def bench_connect_time(self, iters: int = 200) -> dict:
+        """Measure TCP connect() time to the controller (Ethernet only)."""
+        if not self._ethernet_ip_address:
+            raise RuntimeError("bench_connect_time requires Ethernet mode (set_ethernet_mode).")
+
+        samples_ms: list[float] = []
+        errors = 0
+
+        for _ in range(int(iters)):
+            s: socket.socket | None = None
+            t0 = time.perf_counter_ns()
+            try:
+                s = self._open_ethernet_socket()
+                t1 = time.perf_counter_ns()
+                samples_ms.append((t1 - t0) / 1e6)
+            except Exception:
+                errors += 1
+            finally:
+                try:
+                    if s is not None:
+                        s.close()
+                except Exception:
+                    pass
+
+        summary = self._bench_summarize_ms(samples_ms)
+        summary.update({"iters": int(iters), "errors": int(errors)})
+        return summary
+
+    def bench_command_rtt(
+            self,
+            iters: int = 2000,
+            wrap_mode: bool = True,
+            connect_mode: str = "persistent",
+            warmup: int = 20,
+    ) -> dict:
+        """Measure host-side RTT for a small request/response command.
+
+        This runs repeated `get_perf_stats()` calls and measures the host round-trip
+        time. Use this to compare:
+        - host computers,
+        - Ethernet switches / LANs,
+        - firmware Ethernet backends (mongoose vs QNEthernet),
+        while keeping the application-level payload constant.
+
+        Parameters
+        ----------
+        iters:
+            Number of samples to record.
+        wrap_mode:
+            If True, the test is bounded by ALL_ON/ALL_OFF so the firmware-side
+            perf probe is active and will emit a PERF_* report at mode end.
+        connect_mode:
+            "persistent" (default) reuses the controller TCP connection.
+            "new_connection" opens/closes a new TCP connection per iteration.
+        warmup:
+            Number of warmup iterations (not recorded). Useful to get past ARP,
+            TCP slow start, or first-command firmware setup.
+        """
+        if connect_mode not in {"persistent", "new_connection"}:
+            raise ValueError("connect_mode must be 'persistent' or 'new_connection'")
+
+        reconnects_before = self.get_socket_reconnects(reset=False)
+
+        if wrap_mode:
+            self.all_on()
+
+        self.reset_perf_stats()
+
+        # Warmup
+        for _ in range(int(warmup)):
+            if connect_mode == "persistent":
+                self.get_perf_stats()
+            else:
+                s = self._open_ethernet_socket()
+                try:
+                    self.get_perf_stats(ethernet_socket=s)
+                finally:
+                    s.close()
+
+        rtts_ms: list[float] = []
+        bytes_tx = 0
+        bytes_rx = 0
+        errors = 0
+
+        for _ in range(int(iters)):
+            if connect_mode == "persistent":
+                t0 = time.perf_counter_ns()
+                payload = self.get_perf_stats()
+                t1 = time.perf_counter_ns()
+                rtts_ms.append((t1 - t0) / 1e6)
+                bytes_tx += 2  # b'\x01\x71'
+                bytes_rx += (len(payload) + 3)  # status + echo + payload (length excluded)
+            else:
+                s = self._open_ethernet_socket()
+                try:
+                    t0 = time.perf_counter_ns()
+                    payload = self.get_perf_stats(ethernet_socket=s)
+                    t1 = time.perf_counter_ns()
+                    rtts_ms.append((t1 - t0) / 1e6)
+                    bytes_tx += 2
+                    bytes_rx += (len(payload) + 3)
+                except Exception:
+                    errors += 1
+                finally:
+                    try:
+                        s.close()
+                    except Exception:
+                        pass
+
+        summary = self._bench_summarize_ms(rtts_ms)
+        reconnects_after = self.get_socket_reconnects(reset=False)
+
+        summary.update(
+            {
+                "iters": int(iters),
+                "warmup": int(warmup),
+                "connect_mode": connect_mode,
+                "bytes_tx": int(bytes_tx),
+                "bytes_rx": int(bytes_rx),
+                "errors": int(errors),
+                "reconnects": int(reconnects_after - reconnects_before),
+                "last_socket_error": self._socket_last_error,
+            }
+        )
+
+        if wrap_mode:
+            self.all_off()
+
+        return summary
+
+    def bench_spf_updates(
+            self,
+            rate_hz: float = 200.0,
+            seconds: float = 5.0,
+            pattern_id: int = 10,
+            frame_min: int = 0,
+            frame_max: int = 1000,
+            pacing: str = "target",
+            warmup: int = 0,
+    ) -> dict:
+        """Benchmark SHOW_PATTERN_FRAME update performance (SPF).
+
+        This measures host-side performance of repeated `SET_FRAME_POSITION_CMD`
+        requests and is intended to be paired with QS capture so you can compare
+        firmware-side `PERF_UPD kind=SPF` and `PERF_NET` across:
+        - firmware Ethernet stacks,
+        - switches / host NICs / LANs.
+
+        Parameters
+        ----------
+        pacing:
+            "target" attempts to pace updates to `rate_hz`.
+            "max" sends updates as fast as possible (no pacing).
+        warmup:
+            Number of warmup updates to send before starting measurement.
+        """
+        if pacing not in {"target", "max"}:
+            raise ValueError("pacing must be 'target' or 'max'")
+
+        reconnects_before = self.get_socket_reconnects(reset=False)
+
+        self.reset_perf_stats()
+
+        # Some firmware builds use TRIAL_PARAMS.frame_rate as target_hz.
+        self.show_pattern_frame(int(pattern_id), int(frame_min), frame_rate=int(rate_hz))
+
+        # Warmup updates (not recorded)
+        frame = int(frame_min)
+        for _ in range(int(warmup)):
+            self.update_pattern_frame(frame)
+            frame += 1
+            if frame > int(frame_max):
+                frame = int(frame_min)
+
+        start_ns = time.perf_counter_ns()
+        end_ns = start_ns + int(float(seconds) * 1e9)
+
+        period_ns = int(1e9 / float(rate_hz)) if (rate_hz and rate_hz > 0) else 0
+        next_deadline_ns = start_ns + period_ns if period_ns else 0
+
+        updates = 0
+        update_rtts_ms: list[float] = []
+        update_starts_ns: list[int] = []
+        late_starts = 0
+        max_start_lag_ns = 0
+
+        bytes_tx = 0
+        bytes_rx = 0
+
+        while time.perf_counter_ns() < end_ns:
+            now_ns = time.perf_counter_ns()
+            if period_ns and pacing == "target":
+                # Lag relative to ideal schedule
+                sched_start_ns = start_ns + (updates * period_ns)
+                lag_ns = now_ns - sched_start_ns
+                if lag_ns > 0:
+                    late_starts += 1
+                    if lag_ns > max_start_lag_ns:
+                        max_start_lag_ns = lag_ns
+
+            update_starts_ns.append(now_ns)
+
+            t0 = time.perf_counter_ns()
+            self.update_pattern_frame(frame)
+            t1 = time.perf_counter_ns()
+            update_rtts_ms.append((t1 - t0) / 1e6)
+
+            # update_pattern_frame command is 4 bytes, response is typically 3 bytes (no payload)
+            bytes_tx += 4
+            bytes_rx += 3
+
+            updates += 1
+            frame += 1
+            if frame > int(frame_max):
+                frame = int(frame_min)
+
+            if period_ns and pacing == "target":
+                # Hybrid sleep + spin to reduce CPU load while keeping decent timing.
+                while True:
+                    now_ns = time.perf_counter_ns()
+                    remaining_ns = next_deadline_ns - now_ns
+                    if remaining_ns <= 0:
+                        break
+                    if remaining_ns > 2_000_000:  # > 2ms
+                        time.sleep((remaining_ns - 1_000_000) / 1e9)  # leave ~1ms for spin
+                    else:
+                        pass
+                next_deadline_ns += period_ns
+
+        self.all_off()
+
+        elapsed_s = (time.perf_counter_ns() - start_ns) / 1e9
+        achieved_hz = updates / elapsed_s if elapsed_s > 0 else 0.0
+
+        # Host-side IFI (time between update call starts)
+        ifi_ms: list[float] = []
+        for i in range(1, len(update_starts_ns)):
+            ifi_ms.append((update_starts_ns[i] - update_starts_ns[i - 1]) / 1e6)
+
+        return {
+            "updates": int(updates),
+            "elapsed_s": float(elapsed_s),
+            "target_hz": float(rate_hz),
+            "achieved_hz": float(achieved_hz),
+            "pacing": pacing,
+            "warmup": int(warmup),
+            "update_rtt_ms": self._bench_summarize_ms(update_rtts_ms),
+            "host_ifi_ms": self._bench_summarize_ms(ifi_ms),
+            "late_starts": int(late_starts),
+            "max_start_lag_ms": float(max_start_lag_ns / 1e6),
+            "bytes_tx": int(bytes_tx),
+            "bytes_rx": int(bytes_rx),
+            "reconnects": int(self.get_socket_reconnects(reset=False) - reconnects_before),
+            "last_socket_error": self._socket_last_error,
+        }
+
+    def bench_stream_frames(
+            self,
+            pattern_path: str,
+            frame_rate: float = 200.0,
+            seconds: float = 5.0,
+            stream_cmd_coalesced: bool = True,
+            progress_interval_s: float = 1.0,
+            analog_out_waveform: str = "constant",
+            analog_update_rate: float = 1.0,
+            analog_frequency: float = 0.0,
+    ) -> dict:
+        """Benchmark STREAM_FRAME throughput using `stream_frames()`.
+
+        Notes
+        -----
+        - `seconds` is converted into the library's TRIAL_PARAMS runtime_duration
+          unit (100ms ticks).
+        - `pattern_path` can be either a `.pattern` file (frame_size header) or
+          a `.pat` file from the `patterns/` directory.
+        """
+        reconnects_before = self.get_socket_reconnects(reset=False)
+
+        self.reset_perf_stats()
+
+        runtime_duration = int(round(float(seconds) * float(RUNTIME_DURATION_PER_SECOND)))
+        stats = self.stream_frames(
+            str(pattern_path),
+            float(frame_rate),
+            runtime_duration,
+            str(analog_out_waveform),
+            float(analog_update_rate),
+            float(analog_frequency),
+            stream_cmd_coalesced=bool(stream_cmd_coalesced),
+            progress_interval_s=float(progress_interval_s),
+        )
+        stats.update(
+            {
+                "pattern_path": str(pattern_path),
+                "frame_rate": float(frame_rate),
+                "seconds": float(seconds),
+                "stream_cmd_coalesced": bool(stream_cmd_coalesced),
+                "reconnects": int(self.get_socket_reconnects(reset=False) - reconnects_before),
+                "last_socket_error": self._socket_last_error,
+            }
+        )
+        return stats
+
+    def bench_suite(
+            self,
+            label: str | None = None,
+            *,
+            include_connect: bool = False,
+            connect_iters: int = 200,
+            cmd_iters: int = 2000,
+            cmd_connect_mode: str = "persistent",
+            spf_rate: float = 200.0,
+            spf_seconds: float = 5.0,
+            spf_pattern_id: int = 10,
+            spf_frame_min: int = 0,
+            spf_frame_max: int = 1000,
+            spf_pacing: str = "target",
+            stream_path: str | None = None,
+            stream_rate: float = 200.0,
+            stream_seconds: float = 5.0,
+            stream_coalesced: bool = True,
+            progress_interval_s: float = 1.0,
+    ) -> dict:
+        """Run a repeatable benchmark suite and return structured results.
+
+        This is useful for collecting comparable measurements across:
+        - firmware builds,
+        - Ethernet stacks (mongoose / QNEthernet),
+        - switches / cables / VLANs,
+        - host computers.
+
+        Tip: attach a `label` like "lab-switch-A / laptop-1" and save results
+        to a JSONL file with `write_bench_jsonl()`.
+        """
+        results: dict = {"meta": self.bench_metadata(label=label)}
+
+        if include_connect:
+            results["connect_time"] = self.bench_connect_time(iters=int(connect_iters))
+
+        results["command_rtt"] = self.bench_command_rtt(
+            iters=int(cmd_iters),
+            wrap_mode=True,
+            connect_mode=str(cmd_connect_mode),
+        )
+
+        results["spf_updates"] = self.bench_spf_updates(
+            rate_hz=float(spf_rate),
+            seconds=float(spf_seconds),
+            pattern_id=int(spf_pattern_id),
+            frame_min=int(spf_frame_min),
+            frame_max=int(spf_frame_max),
+            pacing=str(spf_pacing),
+        )
+
+        if stream_path:
+            results["stream_frames"] = self.bench_stream_frames(
+                pattern_path=str(stream_path),
+                frame_rate=float(stream_rate),
+                seconds=float(stream_seconds),
+                stream_cmd_coalesced=bool(stream_coalesced),
+                progress_interval_s=float(progress_interval_s),
+            )
+
+        # Update socket endpoints after tests (persistent socket likely exists now)
+        if self._ethernet_socket is not None:
+            try:
+                local = self._ethernet_socket.getsockname()
+                peer = self._ethernet_socket.getpeername()
+                results["meta"]["ethernet_local"] = {"ip": local[0], "port": local[1]}
+                results["meta"]["ethernet_peer"] = {"ip": peer[0], "port": peer[1]}
+            except OSError:
+                pass
+
+        return results
+
+    @staticmethod
+    def write_bench_jsonl(path: str, result: dict) -> None:
+        """Append one benchmark result object to a JSONL file."""
+        with open(path, "a", encoding="utf-8") as f:
+            f.write(json.dumps(result, sort_keys=True))
+            f.write("\n")

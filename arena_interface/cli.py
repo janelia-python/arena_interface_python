@@ -7,7 +7,6 @@ from pathlib import Path
 import click
 
 from .arena_interface import ArenaInterface, SERIAL_BAUDRATE
-from .bench import bench_command_rtt, bench_spf_updates, bench_stream_frames
 
 
 pass_arena_interface = click.make_pass_decorator(ArenaInterface)
@@ -117,17 +116,49 @@ def get_perf_stats(arena_interface: ArenaInterface):
 
 
 @cli.command()
+@click.option(
+    "--label",
+    default=None,
+    help="Optional label for this run (e.g. 'lab-switch-A / laptop-1'). Stored in JSON results.",
+)
+@click.option(
+    "--json-out",
+    type=click.Path(dir_okay=False, path_type=Path),
+    default=None,
+    help="Append the full benchmark result object to this JSONL file.",
+)
+@click.option(
+    "--include-connect/--no-include-connect",
+    default=False,
+    show_default=True,
+    help="Include a TCP connect() timing test (Ethernet only).",
+)
+@click.option("--connect-iters", default=200, show_default=True, help="Iterations for connect() timing test")
 @click.option("--cmd-iters", default=2000, show_default=True, help="Iterations for command RTT test")
+@click.option(
+    "--cmd-connect-mode",
+    type=click.Choice(["persistent", "new_connection"], case_sensitive=False),
+    default="persistent",
+    show_default=True,
+    help="Use a persistent socket or open/close a new TCP connection per command.",
+)
 @click.option("--spf-rate", default=200.0, show_default=True, help="Target Hz for update_pattern_frame loop")
 @click.option("--spf-seconds", default=5.0, show_default=True, help="Seconds to run update_pattern_frame loop")
 @click.option("--spf-pattern-id", default=10, show_default=True)
 @click.option("--spf-frame-min", default=0, show_default=True)
 @click.option("--spf-frame-max", default=1000, show_default=True)
 @click.option(
+    "--spf-pacing",
+    type=click.Choice(["target", "max"], case_sensitive=False),
+    default="target",
+    show_default=True,
+    help="'target' paces to --spf-rate, 'max' sends updates as fast as possible.",
+)
+@click.option(
     "--stream-path",
     type=click.Path(exists=True, dir_okay=False, path_type=Path),
     default=None,
-    help="Optional .pattern file to stream",
+    help="Optional .pattern or .pat file to stream",
 )
 @click.option("--stream-rate", default=200.0, show_default=True, help="Target FPS for stream_frames")
 @click.option("--stream-seconds", default=5.0, show_default=True, help="Seconds to run stream_frames")
@@ -136,12 +167,18 @@ def get_perf_stats(arena_interface: ArenaInterface):
 @pass_arena_interface
 def bench(
     arena_interface: ArenaInterface,
+    label: str | None,
+    json_out: Path | None,
+    include_connect: bool,
+    connect_iters: int,
     cmd_iters: int,
+    cmd_connect_mode: str,
     spf_rate: float,
     spf_seconds: float,
     spf_pattern_id: int,
     spf_frame_min: int,
     spf_frame_max: int,
+    spf_pacing: str,
     stream_path: Path | None,
     stream_rate: float,
     stream_seconds: float,
@@ -150,54 +187,96 @@ def bench(
 ):
     """Run a small, repeatable host-side benchmark suite.
 
-    Pair this with your QS log capture so the device-side PERF_* records can be
-    compared across Ethernet backends.
+    Pair this with QS log capture so the device-side PERF_* records can be
+    compared across firmware/network backends.
     """
-    click.echo("\n=== ArenaHost bench ===")
+    click.echo("\n=== ArenaInterface bench ===")
+
+    suite = arena_interface.bench_suite(
+        label=label,
+        include_connect=bool(include_connect),
+        connect_iters=int(connect_iters),
+        cmd_iters=int(cmd_iters),
+        cmd_connect_mode=str(cmd_connect_mode),
+        spf_rate=float(spf_rate),
+        spf_seconds=float(spf_seconds),
+        spf_pattern_id=int(spf_pattern_id),
+        spf_frame_min=int(spf_frame_min),
+        spf_frame_max=int(spf_frame_max),
+        spf_pacing=str(spf_pacing),
+        stream_path=str(stream_path) if stream_path is not None else None,
+        stream_rate=float(stream_rate),
+        stream_seconds=float(stream_seconds),
+        stream_coalesced=bool(stream_coalesced),
+        progress_interval_s=float(progress_interval),
+    )
+
+    meta = suite.get("meta", {})
+    click.echo(
+        f"meta: label={meta.get('label')} host={meta.get('hostname')} "
+        f"python={meta.get('python')} transport={meta.get('transport')} eth_ip={meta.get('ethernet_ip')}"
+    )
+
+    # ------------------------------------------------------------------
+    # Connect timing (optional)
+    # ------------------------------------------------------------------
+    if include_connect and ("connect_time" in suite):
+        ct = suite["connect_time"]
+        click.echo("\n-- connect_time (TCP connect) --")
+        click.echo(
+            "iters={iters}  errors={errors}  mean={mean_ms:.3f} ms  min={min_ms:.3f}  p50={p50_ms:.3f}  "
+            "p95={p95_ms:.3f}  p99={p99_ms:.3f}  max={max_ms:.3f}".format(**ct)
+        )
 
     # ------------------------------------------------------------------
     # Command RTT test (small request/response)
     # ------------------------------------------------------------------
     click.echo("\n-- command_rtt (get_perf_stats) --")
-    cmd_summary = bench_command_rtt(arena_interface, iters=cmd_iters, wrap_mode=True)
+    cmd = suite["command_rtt"]
     click.echo(
-        "samples={samples}  mean={mean_ms:.3f} ms  min={min_ms:.3f}  p50={p50_ms:.3f}  "
-        "p95={p95_ms:.3f}  p99={p99_ms:.3f}  max={max_ms:.3f}".format(**cmd_summary)
+        "iters={iters}  mean={mean_ms:.3f} ms  min={min_ms:.3f}  p50={p50_ms:.3f}  "
+        "p95={p95_ms:.3f}  p99={p99_ms:.3f}  max={max_ms:.3f}  reconnects={reconnects}".format(**cmd)
     )
 
     # ------------------------------------------------------------------
-    # SPF (Show Pattern Frame) update loop
+    # SPF update loop
     # ------------------------------------------------------------------
-    click.echo("\n-- spf_update (show_pattern_frame + update_pattern_frame loop) --")
-    spf_stats = bench_spf_updates(
-        arena_interface,
-        rate_hz=spf_rate,
-        seconds=spf_seconds,
-        pattern_id=spf_pattern_id,
-        frame_min=spf_frame_min,
-        frame_max=spf_frame_max,
-    )
+    click.echo("\n-- spf_updates (show_pattern_frame + update_pattern_frame) --")
+    spf = suite["spf_updates"]
     click.echo(
-        "updates={updates}  elapsed_s={elapsed_s:.3f}  achieved={achieved_hz:.1f} Hz".format(**spf_stats)
+        "updates={updates}  elapsed_s={elapsed_s:.3f}  target={target_hz:.1f} Hz  achieved={achieved_hz:.1f} Hz  "
+        "p99_update_rtt={p99:.3f} ms  reconnects={reconnects}".format(
+            updates=spf["updates"],
+            elapsed_s=spf["elapsed_s"],
+            target_hz=spf["target_hz"],
+            achieved_hz=spf["achieved_hz"],
+            p99=spf["update_rtt_ms"]["p99_ms"],
+            reconnects=spf["reconnects"],
+        )
     )
 
     # ------------------------------------------------------------------
     # Stream frames (optional)
     # ------------------------------------------------------------------
-    if stream_path is not None:
+    if stream_path is not None and ("stream_frames" in suite):
         click.echo("\n-- stream_frames --")
-        stats = bench_stream_frames(
-            arena_interface,
-            pattern_path=str(stream_path),
-            frame_rate=float(stream_rate),
-            seconds=float(stream_seconds),
-            stream_cmd_coalesced=bool(stream_coalesced),
-            progress_interval_s=float(progress_interval),
-            analog_out_waveform="constant",
-            analog_update_rate=1.0,
-            analog_frequency=0.0,
+        st = suite["stream_frames"]
+        click.echo(
+            "frames={frames}  elapsed_s={elapsed_s:.3f}  rate={rate_hz:.1f} Hz  tx={tx_mbps:.2f} Mb/s  reconnects={reconnects}".format(
+                frames=st.get("frames"),
+                elapsed_s=st.get("elapsed_s"),
+                rate_hz=st.get("rate_hz"),
+                tx_mbps=st.get("tx_mbps"),
+                reconnects=st.get("reconnects"),
+            )
         )
-        click.echo(f"host_stats: {stats}")
+
+    # ------------------------------------------------------------------
+    # Persist results
+    # ------------------------------------------------------------------
+    if json_out is not None:
+        ArenaInterface.write_bench_jsonl(str(json_out), suite)
+        click.echo(f"\nappended JSONL: {json_out}")
 
     click.echo("\nBench done. Capture the QS PERF_* lines to compare device-side timings.\n")
 

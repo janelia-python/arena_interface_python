@@ -287,9 +287,55 @@ arena-interface switch-grayscale 0 # 0=binary, 1=grayscale
 
 **** benchmarking
 
-#+BEGIN_SRC sh
-arena-interface --ethernet 192.168.10.104 bench --stream-path ./patterns/pat0004.pat
+Benchmarks are available as *methods* on =ArenaInterface= so you can run them
+from IPython, scripts, or the CLI. The host-side numbers are most useful when
+paired with QS log capture to compare firmware-side =PERF_*= events.
+
+***** Python / IPython
+
+#+BEGIN_SRC python
+from arena_interface import ArenaInterface
+
+ai = ArenaInterface(debug=True)
+ai.set_ethernet_mode("192.168.10.104")
+
+# 1) Small command RTT (latency)
+ai.bench_command_rtt(iters=2000)
+
+# 2) SPF update loop (paced vs max)
+ai.bench_spf_updates(rate_hz=200, seconds=5, pattern_id=10, pacing="target")
+ai.bench_spf_updates(rate_hz=200, seconds=5, pattern_id=10, pacing="max")
+
+# 3) Stream frames (throughput) - accepts .pat or .pattern
+ai.bench_stream_frames("./patterns/pat0004.pat", frame_rate=200, seconds=5, progress_interval_s=0)
+
+# 4) Full suite + save JSONL for later comparison across switches/hosts
+suite = ai.bench_suite(
+    label="lab-switch-A / laptop-1",
+    include_connect=True,
+    stream_path="./patterns/pat0004.pat",
+)
+ai.write_bench_jsonl("bench_results.jsonl", suite)
 #+END_SRC
+
+***** CLI
+
+#+BEGIN_SRC sh
+arena-interface --ethernet 192.168.10.104 bench \
+  --label "lab-switch-A / laptop-1" \
+  --json-out bench_results.jsonl \
+  --include-connect \
+  --cmd-connect-mode persistent \
+  --spf-pacing target \
+  --stream-path ./patterns/pat0004.pat
+#+END_SRC
+
+Tips for comparing Ethernet switches/hosts/LANs:
+
+- Keep the firmware build and the pattern file constant across runs.
+- Vary only the network path (switch/cable/VLAN/host) and change =--label=.
+- Capture QS logs in parallel so you can analyze device-side =PERF_UPD= and
+  =PERF_NET= alongside the host-side results.
 
 * Installation
 

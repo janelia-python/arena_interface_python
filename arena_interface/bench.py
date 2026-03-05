@@ -1,84 +1,42 @@
 """Benchmark helpers for ArenaController host interface.
 
-These functions are intended to be callable from both the CLI and IPython.
-They return structured results (dicts) instead of printing.
+Preferred API
+-------------
+Use the instance methods on :class:`arena_interface.ArenaInterface`:
+
+- ``ai.bench_command_rtt(...)``
+- ``ai.bench_spf_updates(...)``
+- ``ai.bench_stream_frames(...)``
+- ``ai.bench_suite(...)``
+
+This module keeps thin wrapper functions for backwards compatibility and for
+use from scripts/CLI that prefer functional-style calls.
 """
 
 from __future__ import annotations
 
-import statistics
-import time
-from typing import Any, Sequence
+from typing import Any
 
-from .arena_interface import ArenaInterface, RUNTIME_DURATION_PER_SECOND
+from .arena_interface import ArenaInterface
 
 
-def percentile(sorted_values: Sequence[float], pct: float) -> float:
-    """Nearest-rank percentile on a *sorted* list."""
-    if not sorted_values:
-        return float("nan")
-    if pct <= 0:
-        return float(sorted_values[0])
-    if pct >= 100:
-        return float(sorted_values[-1])
-    idx = int((pct / 100.0) * (len(sorted_values) - 1))
-    return float(sorted_values[idx])
-
-
-def summarize_rtts_ms(rtts_ms: Sequence[float]) -> dict[str, Any]:
-    """Summarize RTT samples in milliseconds."""
-    rtts_ms_sorted = sorted(float(x) for x in rtts_ms)
-    if not rtts_ms_sorted:
-        return {
-            "samples": 0,
-            "mean_ms": float("nan"),
-            "min_ms": float("nan"),
-            "p50_ms": float("nan"),
-            "p95_ms": float("nan"),
-            "p99_ms": float("nan"),
-            "max_ms": float("nan"),
-        }
-    return {
-        "samples": len(rtts_ms_sorted),
-        "mean_ms": float(statistics.mean(rtts_ms_sorted)),
-        "min_ms": float(rtts_ms_sorted[0]),
-        "p50_ms": percentile(rtts_ms_sorted, 50),
-        "p95_ms": percentile(rtts_ms_sorted, 95),
-        "p99_ms": percentile(rtts_ms_sorted, 99),
-        "max_ms": float(rtts_ms_sorted[-1]),
-    }
+def bench_connect_time(arena_interface: ArenaInterface, iters: int = 200) -> dict[str, Any]:
+    return arena_interface.bench_connect_time(iters=int(iters))
 
 
 def bench_command_rtt(
         arena_interface: ArenaInterface,
         iters: int = 2000,
         wrap_mode: bool = True,
+        connect_mode: str = "persistent",
+        warmup: int = 20,
 ) -> dict[str, Any]:
-    """Measure host-side RTT for a small request/response command.
-
-    This runs repeated `get_perf_stats()` calls and measures the host round-trip
-    time. If `wrap_mode` is True, the test is bounded by ALL_ON/ALL_OFF to
-    ensure firmware-side perf probes are active and a PERF_* report is emitted
-    at mode end.
-    """
-    if wrap_mode:
-        arena_interface.all_on()
-
-    arena_interface.reset_perf_stats()
-
-    rtts_ms: list[float] = []
-    for _ in range(int(iters)):
-        t0 = time.perf_counter_ns()
-        arena_interface.get_perf_stats()
-        t1 = time.perf_counter_ns()
-        rtts_ms.append((t1 - t0) / 1e6)
-
-    summary = summarize_rtts_ms(rtts_ms)
-
-    if wrap_mode:
-        arena_interface.all_off()
-
-    return summary
+    return arena_interface.bench_command_rtt(
+        iters=int(iters),
+        wrap_mode=bool(wrap_mode),
+        connect_mode=str(connect_mode),
+        warmup=int(warmup),
+    )
 
 
 def bench_spf_updates(
@@ -88,48 +46,18 @@ def bench_spf_updates(
         pattern_id: int = 10,
         frame_min: int = 0,
         frame_max: int = 1000,
+        pacing: str = "target",
+        warmup: int = 0,
 ) -> dict[str, Any]:
-    """Run a SHOW_PATTERN_FRAME + SET_FRAME_POSITION update loop.
-
-    The mode window is bounded by SHOW_PATTERN_FRAME start and ALL_OFF end.
-    Pair this with QS capture to compare device-side PERF_UPD kind=SPF and
-    PERF_NET across firmware/network backends.
-    """
-    arena_interface.reset_perf_stats()
-
-    # Some firmware builds use TRIAL_PARAMS.frame_rate as target_hz.
-    arena_interface.show_pattern_frame(pattern_id, frame_min, frame_rate=int(rate_hz))
-
-    start_ns = time.perf_counter_ns()
-    end_ns = start_ns + int(float(seconds) * 1e9)
-    period_ns = int(1e9 / float(rate_hz)) if rate_hz and rate_hz > 0 else 0
-
-    deadline_ns = start_ns
-    frame = int(frame_min)
-    updates = 0
-
-    while time.perf_counter_ns() < end_ns:
-        arena_interface.update_pattern_frame(frame)
-        updates += 1
-        frame += 1
-        if frame > int(frame_max):
-            frame = int(frame_min)
-
-        if period_ns:
-            deadline_ns += period_ns
-            while time.perf_counter_ns() < deadline_ns:
-                pass
-
-    arena_interface.all_off()
-
-    elapsed_s = (time.perf_counter_ns() - start_ns) / 1e9
-    achieved_hz = updates / elapsed_s if elapsed_s > 0 else 0.0
-    return {
-        "updates": updates,
-        "elapsed_s": float(elapsed_s),
-        "target_hz": float(rate_hz),
-        "achieved_hz": float(achieved_hz),
-    }
+    return arena_interface.bench_spf_updates(
+        rate_hz=float(rate_hz),
+        seconds=float(seconds),
+        pattern_id=int(pattern_id),
+        frame_min=int(frame_min),
+        frame_max=int(frame_max),
+        pacing=str(pacing),
+        warmup=int(warmup),
+    )
 
 
 def bench_stream_frames(
@@ -143,20 +71,57 @@ def bench_stream_frames(
         analog_update_rate: float = 1.0,
         analog_frequency: float = 0.0,
 ) -> dict[str, Any]:
-    """Run a STREAM_FRAME loop using `ArenaInterface.stream_frames`.
-
-    `seconds` is converted into the library's 100ms runtime_duration ticks.
-    """
-    arena_interface.reset_perf_stats()
-
-    runtime_duration = int(round(float(seconds) * float(RUNTIME_DURATION_PER_SECOND)))
-    return arena_interface.stream_frames(
-        str(pattern_path),
-        float(frame_rate),
-        runtime_duration,
-        str(analog_out_waveform),
-        float(analog_update_rate),
-        float(analog_frequency),
+    return arena_interface.bench_stream_frames(
+        pattern_path=str(pattern_path),
+        frame_rate=float(frame_rate),
+        seconds=float(seconds),
         stream_cmd_coalesced=bool(stream_cmd_coalesced),
         progress_interval_s=float(progress_interval_s),
+        analog_out_waveform=str(analog_out_waveform),
+        analog_update_rate=float(analog_update_rate),
+        analog_frequency=float(analog_frequency),
     )
+
+
+def bench_suite(
+        arena_interface: ArenaInterface,
+        label: str | None = None,
+        *,
+        include_connect: bool = False,
+        connect_iters: int = 200,
+        cmd_iters: int = 2000,
+        cmd_connect_mode: str = "persistent",
+        spf_rate: float = 200.0,
+        spf_seconds: float = 5.0,
+        spf_pattern_id: int = 10,
+        spf_frame_min: int = 0,
+        spf_frame_max: int = 1000,
+        spf_pacing: str = "target",
+        stream_path: str | None = None,
+        stream_rate: float = 200.0,
+        stream_seconds: float = 5.0,
+        stream_coalesced: bool = True,
+        progress_interval_s: float = 1.0,
+) -> dict[str, Any]:
+    return arena_interface.bench_suite(
+        label=label,
+        include_connect=bool(include_connect),
+        connect_iters=int(connect_iters),
+        cmd_iters=int(cmd_iters),
+        cmd_connect_mode=str(cmd_connect_mode),
+        spf_rate=float(spf_rate),
+        spf_seconds=float(spf_seconds),
+        spf_pattern_id=int(spf_pattern_id),
+        spf_frame_min=int(spf_frame_min),
+        spf_frame_max=int(spf_frame_max),
+        spf_pacing=str(spf_pacing),
+        stream_path=str(stream_path) if stream_path else None,
+        stream_rate=float(stream_rate),
+        stream_seconds=float(stream_seconds),
+        stream_coalesced=bool(stream_coalesced),
+        progress_interval_s=float(progress_interval_s),
+    )
+
+
+def write_bench_jsonl(path: str, result: dict[str, Any]) -> None:
+    ArenaInterface.write_bench_jsonl(path=str(path), result=result)
