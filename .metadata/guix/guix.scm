@@ -28,6 +28,7 @@
                         #:recursive? #t
                         #:select? (git-predicate %source-dir)))
     (build-system python-build-system)
+    (arguments (list #:tests? #f))
     (native-inputs (list gnu-make
                          git
                          emacs

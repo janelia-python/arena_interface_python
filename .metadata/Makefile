@@ -32,11 +32,11 @@ guix-dev-container:
 
 .PHONY: guix-dev-container-ipython
 guix-dev-container-ipython:
-	$(GUIX-DEV-CONTAINER) -- ipython --no-autoindent
+	$(GUIX-DEV-CONTAINER) -- sh -c "unset PYTHONSAFEPATH; python3 -m IPython --no-autoindent"
 
 .PHONY: guix-container
 guix-container:
-	$(GUIX-CONTAINER) python-ipython --rebuild-cache
+	$(GUIX-CONTAINER) -- sh -c "unset PYTHONSAFEPATH; python3 -m IPython --rebuild-cache --no-autoindent"
 
 .PHONY: requirements.txt
 requirements.txt:
@@ -52,7 +52,7 @@ docker-dev-container:
 
 .PHONY: docker-dev-container-ipython
 docker-dev-container-ipython:
-	$(DOCKER-DEV-CONTAINER) ipython --no-autoindent
+	$(DOCKER-DEV-CONTAINER) python3 -m IPython --no-autoindent
 
 .PHONY: docker-container
 docker-container:
@@ -95,15 +95,15 @@ guix-dev-container-ports-serial:
 
 .PHONY: guix-dev-container-ports-ipython
 guix-dev-container-ports-ipython:
-	$(GUIX-DEV-CONTAINER-PORTS) -- ipython --no-autoindent
+	$(GUIX-DEV-CONTAINER-PORTS) -- sh -c "unset PYTHONSAFEPATH; python3 -m IPython --no-autoindent"
 
 .PHONY: guix-container-ports
 guix-container-ports:
-	$(GUIX-CONTAINER-PORTS) python-ipython --rebuild-cache
+	$(GUIX-CONTAINER-PORTS) -- sh -c "unset PYTHONSAFEPATH; python3 -m IPython --rebuild-cache --no-autoindent"
 
 .PHONY: docker-dev-container-port-ipython
 docker-dev-container-port-ipython:
-	$(DOCKER-DEV-CONTAINER-PORT) ipython --no-autoindent
+	$(DOCKER-DEV-CONTAINER-PORT) python3 -m IPython --no-autoindent
 
 .PHONY: docker-container-port
 docker-container-port:
