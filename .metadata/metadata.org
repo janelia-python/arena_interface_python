@@ -813,7 +813,7 @@ docker-container-port:
 # File edits may be overwritten!
 [build-system]
 requires = ["setuptools"]
-build-backed = "setuptools.build_meta"
+build-backend = "setuptools.build_meta"
 #+END_SRC
 
 #+HEADER: :tangle (if tangle-external-files "../setup.cfg" "no")

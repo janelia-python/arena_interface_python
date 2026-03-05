@@ -1,4 +1,8 @@
 """Python interface to the Reiser lab ArenaController."""
+from __future__ import annotations
+
+import math
+import os
 import socket
 import struct
 import time
@@ -9,7 +13,9 @@ import cProfile
 import pstats
 
 
-PORT = 62222
+ETHERNET_SERVER_PORT = 62222
+# Backwards-compat alias (older code may import PORT)
+PORT = ETHERNET_SERVER_PORT
 PATTERN_HEADER_SIZE = 7
 BYTE_COUNT_PER_PANEL_GRAYSCALE = 132
 REPEAT_LIMIT = 4
@@ -23,6 +29,10 @@ SERIAL_BAUDRATE = 115200
 ANALOG_OUTPUT_VALUE_MIN = 100
 ANALOG_OUTPUT_VALUE_MAX = 4095
 
+# Chunk size used for optional STREAM_FRAME chunked sends.
+# Keep this comfortably below typical MTU to avoid excessive fragmentation.
+CHUNK_SIZE = 4096
+
 
 class ArenaInterface():
     """Python interface to the Reiser lab ArenaController."""
@@ -31,6 +41,7 @@ class ArenaInterface():
         self._debug = debug
         self._serial = None
         self._ethernet_ip_address = ''
+        self._ethernet_socket: socket.socket | None = None
         atexit.register(self._exit)
 
     def _debug_print(self, *args):
@@ -42,8 +53,11 @@ class ArenaInterface():
         """
         Close the serial connection to provide some clean up.
         """
-        if self._serial:
-            self._serial.close()
+        try:
+            self.close()
+        except Exception:
+            # Best-effort cleanup only.
+            pass
 
     def _connect_ethernet_socket(self, repeat_count=10, reuse=True):
         """Connect (or reuse) a TCP socket to the firmware's Ethernet server."""
@@ -92,6 +106,20 @@ class ArenaInterface():
             if not chunk:
                 raise ConnectionError("socket closed while receiving")
             data += chunk
+        return data
+
+    def _read(self, transport, n: int) -> bytes:
+        """Read exactly n bytes from a serial or Ethernet transport."""
+        if transport is None:
+            raise RuntimeError("No transport provided")
+        if isinstance(transport, socket.socket):
+            return self._recv_exact(transport, n)
+        # Assume pyserial-like.
+        data = transport.read(n)
+        if data is None:
+            return b""
+        if len(data) != n:
+            raise TimeoutError(f"serial read short: expected {n}, got {len(data)}")
         return data
 
     def _send_and_receive(self, cmd, ethernet_socket=None):
@@ -158,7 +186,7 @@ class ArenaInterface():
     def set_serial_mode(self, port, baudrate=SERIAL_BAUDRATE):
         """Set serial mode specifying the serial port."""
         self._close_ethernet_socket()
-        self._ethernet_ip_address = None
+        self._ethernet_ip_address = ''
         if self._serial:
             self._serial.close()
 
@@ -258,12 +286,31 @@ class ArenaInterface():
                 break
         self._debug_print('response: ', response)
 
-    def show_pattern_frame(self, pattern_id, frame_index, ethernet_socket=None):
-        """Show pattern frame."""
+    def show_pattern_frame(
+            self,
+            pattern_id,
+            frame_index,
+            frame_rate: int = 0,
+            runtime_duration: int = 0,
+            gain: int = 0x10,
+            ethernet_socket=None,
+    ):
+        """Show pattern frame.
+
+        Parameters
+        ----------
+        pattern_id:
+            Pattern ID on the controller.
+        frame_index:
+            Initial frame index.
+        frame_rate:
+            Target refresh rate (Hz). Some firmware builds use this as the mode
+            target_hz for perf sessions.
+        runtime_duration:
+            Duration in 100ms ticks (same unit as play_pattern TRIAL_PARAMS).
+            Use 0 for "run until interrupted".
+        """
         control_mode = 0x03
-        frame_rate = 0
-        gain = 0x10 # dummy value
-        runtime_duration = 0
         cmd_bytes = struct.pack('<BBBHhHhH',
                                 0x0c,
                                 0x08,
@@ -307,7 +354,7 @@ class ArenaInterface():
         frames_displayed_count = 0
         frames_to_display_count = int((frame_rate * runtime_duration) / RUNTIME_DURATION_PER_SECOND)
         ethernet_socket = self._connect_ethernet_socket()
-        self.show_pattern_frame(pattern_id, frame_index_min, ethernet_socket)
+        self.show_pattern_frame(pattern_id, frame_index_min, ethernet_socket=ethernet_socket)
         stream_frames_start_time = time.time_ns()
         while frames_displayed_count < frames_to_display_count:
             pattern_start_time = time.time_ns()
@@ -333,6 +380,14 @@ class ArenaInterface():
     def get_ethernet_ip_address(self):
         """Get Ethernet IP address."""
         return self._send_and_receive(b'\x01\x66')
+
+    def get_perf_stats(self, ethernet_socket=None) -> bytes:
+        """Fetch a raw performance stats snapshot (binary payload)."""
+        return self._send_and_receive(b'\x01\x71', ethernet_socket)
+
+    def reset_perf_stats(self, ethernet_socket=None):
+        """Reset performance counters on the device."""
+        self._send_and_receive(b'\x01\x72', ethernet_socket)
 
     def all_on(self):
         """Turn all panels on."""
@@ -395,44 +450,68 @@ class ArenaInterface():
             stream_cmd_coalesced=False,
             progress_interval_s=1.0,
     ):
-        """Stream a pattern file's frames at a fixed rate for a fixed duration.
+        """Stream a `.pattern` file's frames at a fixed rate for a fixed duration.
 
-        Returns a dict with basic host-side throughput stats.
+        Notes
+        -----
+        - `runtime_duration` uses the same unit as TRIAL_PARAMS: **100ms ticks**.
+          For example, `runtime_duration=50` streams for ~5 seconds.
+        - The `.pattern` file format expected here is:
+            [uint32_le frame_size][frame0 bytes][frame1 bytes]...
+
+        Returns
+        -------
+        dict
+            Basic host-side throughput stats.
         """
         # Read pattern file: [uint32 frame_size][frame0][frame1]...
         with open(pattern_path, 'rb') as f:
-            frame_size = struct.unpack('<I', f.read(4))[0]
+            frame_size_raw = f.read(4)
+            if len(frame_size_raw) != 4:
+                raise ValueError(f"{pattern_path} is too small to be a .pattern file")
+            frame_size = struct.unpack('<I', frame_size_raw)[0]
+            if frame_size <= 0:
+                raise ValueError(f"invalid frame_size={frame_size} in {pattern_path}")
+
             file_size = os.path.getsize(pattern_path)
+            if (file_size - 4) % frame_size != 0:
+                raise ValueError(
+                    f"file size {file_size} not compatible with frame_size {frame_size} in {pattern_path}"
+                )
             num_frames = int((file_size - 4) / frame_size)
             frames = [f.read(frame_size) for _ in range(num_frames)]
 
-        frames_total = int(runtime_duration * frame_rate)
-        frame_period_ns = int((1 / frame_rate) * 1e9)
+        runtime_duration_s = float(runtime_duration) / float(RUNTIME_DURATION_PER_SECOND)
+        frames_total = int(runtime_duration_s * float(frame_rate))
+        frame_period_ns = int((1.0 / float(frame_rate)) * 1e9) if frame_rate else 0
 
-        analog_update_period_ns = int((1 / analog_update_rate) * 1e9)
-        analog_start_time_ns = time.perf_counter_ns()
+        analog_update_period_ns = int((1.0 / float(analog_update_rate)) * 1e9) if analog_update_rate else 0
 
-        analog_amplitude = (2 ** 16) / 2 - 1
-        analog_offset = (2 ** 16) / 2
+        # Map waveform output [-1..1] into a conservative 12-bit-ish range.
+        analog_amplitude = (ANALOG_OUTPUT_VALUE_MAX - ANALOG_OUTPUT_VALUE_MIN) / 2.0
+        analog_offset = (ANALOG_OUTPUT_VALUE_MAX + ANALOG_OUTPUT_VALUE_MIN) / 2.0
 
-        def analog_waveform_for(name):
+        def analog_waveform_for(name: str):
             if name == 'sin':
-                return np.sin
-            elif name == 'square':
-                return lambda x: np.sign(np.sin(x))
-            elif name == 'sawtooth':
-                return lambda x: 2 * (x / (2 * np.pi) - np.floor(1 / 2 + x / (2 * np.pi)))
-            elif name == 'triangle':
-                return lambda x: 2 * np.abs(2 * (x / (2 * np.pi) - np.floor(1 / 2 + x / (2 * np.pi)))) - 1
-            elif name == 'constant':
-                return lambda x: 0
-            else:
-                raise ValueError(f'Invalid analog output waveform: {name}')
+                return math.sin
+            if name == 'square':
+                return lambda x: 1.0 if math.sin(x) >= 0 else -1.0
+            if name == 'sawtooth':
+                return lambda x: 2.0 * (x / (2.0 * math.pi) - math.floor(0.5 + x / (2.0 * math.pi)))
+            if name == 'triangle':
+                return lambda x: 2.0 * abs(2.0 * (x / (2.0 * math.pi) - math.floor(0.5 + x / (2.0 * math.pi)))) - 1.0
+            if name == 'constant':
+                return lambda x: 0.0
+            raise ValueError(f'Invalid analog output waveform: {name}')
 
         ethernet_socket = self._connect_ethernet_socket(reuse=True)
 
         bytes_sent = 0
         frames_streamed = 0
+
+        wf = analog_waveform_for(str(analog_out_waveform))
+        last_analog_update_ns = 0
+        analog_value_cached = int(round(analog_offset))
 
         start_time_ns = time.perf_counter_ns()
         next_progress_ns = None
@@ -444,13 +523,20 @@ class ArenaInterface():
             frame = frames[frame_index]
 
             # Analog output update (optional)
-            if (time.perf_counter_ns() - analog_start_time_ns) > (i * analog_update_period_ns):
-                analog_phase = (i / analog_update_rate) * analog_frequency * 2 * np.pi
-                analog_output_value = analog_amplitude * analog_waveform_for(analog_out_waveform)(analog_phase) + analog_offset
-                # Ensure this is an int in-range for uint16.
-                analog_output_value = int(max(0, min(65535, round(float(analog_output_value)))))
-            else:
-                analog_output_value = 0
+            now_ns = time.perf_counter_ns()
+            if analog_update_period_ns and (now_ns - last_analog_update_ns) >= analog_update_period_ns:
+                t_s = (now_ns - start_time_ns) / 1e9
+                analog_phase = (t_s * float(analog_frequency)) * (2.0 * math.pi)
+                analog_output_value_f = analog_amplitude * float(wf(analog_phase)) + analog_offset
+                analog_value_cached = int(
+                    max(
+                        ANALOG_OUTPUT_VALUE_MIN,
+                        min(ANALOG_OUTPUT_VALUE_MAX, round(analog_output_value_f)),
+                    )
+                )
+                last_analog_update_ns = now_ns
+
+            analog_output_value = int(analog_value_cached)
 
             # Stream frame header: cmd(0x32), data_len(uint16), analog(uint16), reserved(uint16)
             data_len = len(frame)
@@ -476,8 +562,9 @@ class ArenaInterface():
                     next_progress_ns += int(progress_interval_s * 1e9)
 
             # Rate limiting (busy-wait)
-            while (time.perf_counter_ns() - start_time_ns) < ((i + 1) * frame_period_ns):
-                pass
+            if frame_period_ns:
+                while (time.perf_counter_ns() - start_time_ns) < ((i + 1) * frame_period_ns):
+                    pass
 
         # End the mode
         self._send_and_receive(bytes([1, 0]), ethernet_socket)

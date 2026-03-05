@@ -1,14 +1,13 @@
-"""Command line interface for the ArenaHost."""
+"""Command line interface for the ArenaController host tools."""
 
 from __future__ import annotations
 
-import statistics
-import time
 from pathlib import Path
 
 import click
 
 from .arena_interface import ArenaInterface, SERIAL_BAUDRATE
+from .bench import bench_command_rtt, bench_spf_updates, bench_stream_frames
 
 
 pass_arena_interface = click.make_pass_decorator(ArenaInterface)
@@ -88,17 +87,16 @@ def display_reset(arena_interface: ArenaInterface):
 
 
 @cli.command()
+@click.argument("grayscale_index", type=int)
 @pass_arena_interface
-def switch_grayscale(arena_interface: ArenaInterface):
-    """Switch display to grayscale."""
-    arena_interface.switch_grayscale()
+def switch_grayscale(arena_interface: ArenaInterface, grayscale_index: int):
+    """Switch display grayscale mode.
 
-
-@cli.command()
-@pass_arena_interface
-def switch_rgb(arena_interface: ArenaInterface):
-    """Switch display to RGB."""
-    arena_interface.switch_rgb()
+    GRAYSCALE_INDEX:
+      0 = binary
+      1 = grayscale
+    """
+    arena_interface.switch_grayscale(int(grayscale_index))
 
 
 @cli.command()
@@ -116,13 +114,6 @@ def get_perf_stats(arena_interface: ArenaInterface):
     stats = arena_interface.get_perf_stats()
     # Print as hex so it's easy to copy/paste into analysis scripts.
     click.echo(stats.hex())
-
-
-def _percentile(sorted_values, pct: float) -> float:
-    if not sorted_values:
-        return float("nan")
-    idx = int((pct / 100.0) * (len(sorted_values) - 1))
-    return float(sorted_values[idx])
 
 
 @cli.command()
@@ -167,75 +158,44 @@ def bench(
     # ------------------------------------------------------------------
     # Command RTT test (small request/response)
     # ------------------------------------------------------------------
-    arena_interface.reset_perf_stats()
-    rtts_ms = []
-    for _ in range(cmd_iters):
-        t0 = time.perf_counter_ns()
-        arena_interface.get_perf_stats()
-        t1 = time.perf_counter_ns()
-        rtts_ms.append((t1 - t0) / 1e6)
-
-    rtts_ms_sorted = sorted(rtts_ms)
     click.echo("\n-- command_rtt (get_perf_stats) --")
-    click.echo(f"samples: {len(rtts_ms_sorted)}")
+    cmd_summary = bench_command_rtt(arena_interface, iters=cmd_iters, wrap_mode=True)
     click.echo(
-        "mean={:.3f} ms  min={:.3f}  p50={:.3f}  p95={:.3f}  p99={:.3f}  max={:.3f}".format(
-            statistics.mean(rtts_ms_sorted),
-            rtts_ms_sorted[0],
-            _percentile(rtts_ms_sorted, 50),
-            _percentile(rtts_ms_sorted, 95),
-            _percentile(rtts_ms_sorted, 99),
-            rtts_ms_sorted[-1],
-        )
+        "samples={samples}  mean={mean_ms:.3f} ms  min={min_ms:.3f}  p50={p50_ms:.3f}  "
+        "p95={p95_ms:.3f}  p99={p99_ms:.3f}  max={max_ms:.3f}".format(**cmd_summary)
     )
 
     # ------------------------------------------------------------------
     # SPF (Show Pattern Frame) update loop
     # ------------------------------------------------------------------
     click.echo("\n-- spf_update (show_pattern_frame + update_pattern_frame loop) --")
-    arena_interface.reset_perf_stats()
-    arena_interface.show_pattern_frame(spf_pattern_id, spf_frame_min, int(spf_rate))
-
-    start_ns = time.perf_counter_ns()
-    end_ns = start_ns + int(spf_seconds * 1e9)
-    period_ns = int(1e9 / spf_rate) if spf_rate > 0 else 0
-
-    deadline_ns = start_ns
-    frame = spf_frame_min
-    updates = 0
-
-    while time.perf_counter_ns() < end_ns:
-        arena_interface.update_pattern_frame(frame)
-        updates += 1
-        frame += 1
-        if frame > spf_frame_max:
-            frame = spf_frame_min
-
-        if period_ns:
-            deadline_ns += period_ns
-            while time.perf_counter_ns() < deadline_ns:
-                pass
-
-    arena_interface.all_off()
-    elapsed_s = (time.perf_counter_ns() - start_ns) / 1e9
-    achieved_hz = updates / elapsed_s if elapsed_s > 0 else 0.0
-    click.echo(f"updates: {updates}, elapsed_s: {elapsed_s:.3f}, achieved: {achieved_hz:.1f} Hz")
+    spf_stats = bench_spf_updates(
+        arena_interface,
+        rate_hz=spf_rate,
+        seconds=spf_seconds,
+        pattern_id=spf_pattern_id,
+        frame_min=spf_frame_min,
+        frame_max=spf_frame_max,
+    )
+    click.echo(
+        "updates={updates}  elapsed_s={elapsed_s:.3f}  achieved={achieved_hz:.1f} Hz".format(**spf_stats)
+    )
 
     # ------------------------------------------------------------------
     # Stream frames (optional)
     # ------------------------------------------------------------------
     if stream_path is not None:
         click.echo("\n-- stream_frames --")
-        arena_interface.reset_perf_stats()
-        stats = arena_interface.stream_frames(
-            str(stream_path),
-            float(stream_rate),
-            float(stream_seconds),
-            "constant",
-            1.0,
-            0.0,
-            stream_cmd_coalesced=stream_coalesced,
-            progress_interval_s=progress_interval,
+        stats = bench_stream_frames(
+            arena_interface,
+            pattern_path=str(stream_path),
+            frame_rate=float(stream_rate),
+            seconds=float(stream_seconds),
+            stream_cmd_coalesced=bool(stream_coalesced),
+            progress_interval_s=float(progress_interval),
+            analog_out_waveform="constant",
+            analog_update_rate=1.0,
+            analog_frequency=0.0,
         )
         click.echo(f"host_stats: {stats}")
 
