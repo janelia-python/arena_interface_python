@@ -200,6 +200,12 @@ Options:
 
     - `--stream-seconds` is wall-clock duration. If the firmware/host link can't sustain `--stream-rate-hz`, the run still ends after that duration and `achieved` will be lower.
 
+    - Stream bench results include a timing breakdown when `collect_timings=True` (default for the bench):
+      - `send_ms`: time spent in host `sendall()` (can grow if the link is backpressuring)
+      - `response_wait_ms`: time waiting for the device response bytes
+      - `cmd_rtt_ms`: total per-frame request/response time (`send_ms + response_wait_ms`)
+
+
     Tips for comparing Ethernet switches/hosts/LANs:
 
     - Keep the firmware build and the pattern file constant across runs.

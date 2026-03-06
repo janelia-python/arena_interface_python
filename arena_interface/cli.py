@@ -261,15 +261,30 @@ def bench(
     if stream_path is not None and ("stream_frames" in suite):
         click.echo("\n-- stream_frames --")
         st = suite["stream_frames"]
+
+        extra = ""
+        if isinstance(st.get("cmd_rtt_ms"), dict):
+            cmd = st.get("cmd_rtt_ms") or {}
+            send = st.get("send_ms") if isinstance(st.get("send_ms"), dict) else {}
+            wait = st.get("response_wait_ms") if isinstance(st.get("response_wait_ms"), dict) else {}
+            extra = "  rtt_p99={p99:.3f} ms (send_p99={sp99:.3f} ms wait_p99={wp99:.3f} ms)".format(
+                p99=float(cmd.get("p99_ms", float("nan"))),
+                sp99=float(send.get("p99_ms", float("nan"))),
+                wp99=float(wait.get("p99_ms", float("nan"))),
+            )
+
         click.echo(
-            "frames={frames}  elapsed_s={elapsed_s:.3f}  rate={rate_hz:.1f} Hz  tx={tx_mbps:.2f} Mb/s  reconnects={reconnects}".format(
+            "frames={frames}  elapsed_s={elapsed_s:.3f}  rate={rate_hz:.1f} Hz  tx={tx_mbps:.2f} Mb/s  reconnects={reconnects}{extra}".format(
                 frames=st.get("frames"),
                 elapsed_s=st.get("elapsed_s"),
                 rate_hz=st.get("rate_hz"),
                 tx_mbps=st.get("tx_mbps"),
                 reconnects=st.get("reconnects"),
+                extra=extra,
             )
         )
+
+
 
     # ------------------------------------------------------------------
     # Persist results

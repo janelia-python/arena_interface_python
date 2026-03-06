@@ -70,6 +70,7 @@ def bench_stream_frames(
         analog_out_waveform: str = "constant",
         analog_update_rate: float = 1.0,
         analog_frequency: float = 0.0,
+        collect_timings: bool = True,
 ) -> dict[str, Any]:
     return arena_interface.bench_stream_frames(
         pattern_path=str(pattern_path),
@@ -80,6 +81,7 @@ def bench_stream_frames(
         analog_out_waveform=str(analog_out_waveform),
         analog_update_rate=float(analog_update_rate),
         analog_frequency=float(analog_frequency),
+        collect_timings=bool(collect_timings),
     )
 
 

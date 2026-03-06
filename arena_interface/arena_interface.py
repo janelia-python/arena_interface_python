@@ -155,34 +155,53 @@ class ArenaInterface():
         if len(data) != n:
             raise TimeoutError(f"serial read short: expected {n}, got {len(data)}")
         return data
-
-    def _send_and_receive(self, cmd, ethernet_socket=None):
+    def _send_and_receive(self, cmd, ethernet_socket=None, *, return_timings: bool = False):
         """Send a command and wait for a binary response.
 
         If no socket is provided and we're in Ethernet mode, this reuses a
         persistent TCP connection to avoid per-command connect overhead.
+
+        Parameters
+        ----------
+        return_timings:
+            If True, return a tuple: (payload_bytes, send_ms, recv_ms), where
+            send_ms is time spent in send/write calls and recv_ms is time spent
+            waiting for and reading the response bytes.
         """
         if self._serial:
+            t0 = time.perf_counter_ns()
             if isinstance(cmd, str):
                 self._serial.write(cmd.encode())
             else:
                 self._serial.write(cmd)
+            t1 = time.perf_counter_ns()
             resp_len = self._serial.read(1)
             response = resp_len + self._serial.read(int(resp_len[0]))
-            return response[3:]
+            t2 = time.perf_counter_ns()
+            payload = response[3:]
+            if return_timings:
+                return payload, (t1 - t0) / 1e6, (t2 - t1) / 1e6
+            return payload
 
         # Ethernet
         sock = ethernet_socket if (ethernet_socket is not None) else self._connect_ethernet_socket(reuse=True)
 
         def _do_io(s: socket.socket):
+            t0 = time.perf_counter_ns()
             if isinstance(cmd, str):
                 s.sendall(cmd.encode())
             else:
                 s.sendall(cmd)
+            t1 = time.perf_counter_ns()
 
             resp_len = self._recv_exact(s, 1)
             payload = self._recv_exact(s, int(resp_len[0]))
-            return (resp_len + payload)[3:]
+            t2 = time.perf_counter_ns()
+
+            out = (resp_len + payload)[3:]
+            if return_timings:
+                return out, (t1 - t0) / 1e6, (t2 - t1) / 1e6
+            return out
 
         # If we're using the persistent socket, allow one reconnect attempt.
         attempts = 1 if (ethernet_socket is not None) else 2
@@ -199,16 +218,59 @@ class ArenaInterface():
                 sock = self._connect_ethernet_socket(reuse=True)
 
         raise ConnectionError("failed to send/receive over Ethernet after reconnect")
+    def _send_and_receive_stream(
+            self,
+            stream_header: bytes,
+            frame_chunked: list[bytes],
+            ethernet_socket: socket.socket | None = None,
+            *,
+            return_timings: bool = False,
+    ):
+        """Send a stream frame (header + payload) and wait for response.
 
-    def _send_and_receive_stream(self, stream_header, frame_chunked, ethernet_socket):
-        """Send a stream frame (header + frame payload) and wait for response."""
-        ethernet_socket.sendall(stream_header)
-        for chunk in frame_chunked:
-            ethernet_socket.sendall(chunk)
+        This mirrors `_send_and_receive()` but supports chunked payload sends.
 
-        resp_len = self._recv_exact(ethernet_socket, 1)
-        payload = self._recv_exact(ethernet_socket, int(resp_len[0]))
-        return (resp_len + payload)[3:]
+        Parameters
+        ----------
+        ethernet_socket:
+            Optional explicit socket. If omitted, uses (and can reconnect) the
+            instance's persistent Ethernet socket.
+        return_timings:
+            If True, return (payload_bytes, send_ms, recv_ms).
+        """
+        sock = ethernet_socket if (ethernet_socket is not None) else self._connect_ethernet_socket(reuse=True)
+
+        def _do_io(s: socket.socket):
+            t0 = time.perf_counter_ns()
+            s.sendall(stream_header)
+            for chunk in frame_chunked:
+                s.sendall(chunk)
+            t1 = time.perf_counter_ns()
+
+            resp_len = self._recv_exact(s, 1)
+            payload = self._recv_exact(s, int(resp_len[0]))
+            t2 = time.perf_counter_ns()
+
+            out = (resp_len + payload)[3:]
+            if return_timings:
+                return out, (t1 - t0) / 1e6, (t2 - t1) / 1e6
+            return out
+
+        # If we're using the persistent socket, allow one reconnect attempt.
+        attempts = 1 if (ethernet_socket is not None) else 2
+        for _ in range(attempts):
+            try:
+                return _do_io(sock)
+            except (OSError, ConnectionError) as e:
+                if ethernet_socket is not None:
+                    raise
+                self._socket_reconnects += 1
+                self._socket_last_error = repr(e)
+                self._debug_print(f"socket error ({e}), reconnecting")
+                self._close_ethernet_socket()
+                sock = self._connect_ethernet_socket(reuse=True)
+
+        raise ConnectionError("failed to send/receive STREAM_FRAME over Ethernet after reconnect")
 
     def set_ethernet_mode(self, ip_address):
         """Set ethernet mode."""
@@ -485,6 +547,7 @@ class ArenaInterface():
             analog_frequency,
             stream_cmd_coalesced=False,
             progress_interval_s=1.0,
+            collect_timings: bool = False,
     ):
         """Stream a `.pattern` file's frames at a fixed rate for a fixed duration.
 
@@ -571,10 +634,15 @@ class ArenaInterface():
                 return lambda x: 0.0
             raise ValueError(f'Invalid analog output waveform: {name}')
 
-        ethernet_socket = self._connect_ethernet_socket(reuse=True)
+        # Ensure persistent socket is established once for the run.
+        self._connect_ethernet_socket(reuse=True)
 
         bytes_sent = 0
         frames_streamed = 0
+
+        send_ms_samples: list[float] = []
+        resp_wait_ms_samples: list[float] = []
+        cmd_rtt_ms_samples: list[float] = []
 
         wf = analog_waveform_for(str(analog_out_waveform))
         last_analog_update_ns = 0
@@ -638,11 +706,27 @@ class ArenaInterface():
             stream_header = struct.pack('<BHHH', 0x32, data_len, analog_output_value, 0)
 
             if stream_cmd_coalesced:
-                self._send_and_receive(stream_header + frame, ethernet_socket)
+                if collect_timings:
+                    _, send_ms, recv_ms = self._send_and_receive(stream_header + frame, return_timings=True)
+                    send_ms_samples.append(float(send_ms))
+                    resp_wait_ms_samples.append(float(recv_ms))
+                    cmd_rtt_ms_samples.append(float(send_ms) + float(recv_ms))
+                else:
+                    self._send_and_receive(stream_header + frame)
             else:
                 # Chunk the frame payload for better control over send sizes.
                 frame_chunked = [frame[i:i + CHUNK_SIZE] for i in range(0, len(frame), CHUNK_SIZE)]
-                self._send_and_receive_stream(stream_header, frame_chunked, ethernet_socket)
+                if collect_timings:
+                    _, send_ms, recv_ms = self._send_and_receive_stream(
+                        stream_header,
+                        frame_chunked,
+                        return_timings=True,
+                    )
+                    send_ms_samples.append(float(send_ms))
+                    resp_wait_ms_samples.append(float(recv_ms))
+                    cmd_rtt_ms_samples.append(float(send_ms) + float(recv_ms))
+                else:
+                    self._send_and_receive_stream(stream_header, frame_chunked)
 
             frames_streamed += 1
             bytes_sent += (len(stream_header) + data_len)
@@ -662,16 +746,15 @@ class ArenaInterface():
             if frame_period_ns:
                 next_frame_deadline_ns += frame_period_ns
             i += 1
-
-# End the mode
-        self._send_and_receive(bytes([1, 0]), ethernet_socket)
+        # End the mode
+        self._send_and_receive(bytes([1, 0]))
 
         elapsed_s = (time.perf_counter_ns() - start_time_ns) / 1e9
         rate_hz = frames_streamed / elapsed_s if elapsed_s > 0 else 0.0
         mbps = (bytes_sent * 8) / (elapsed_s * 1e6) if elapsed_s > 0 else 0.0
         print(f'frames streamed: {frames_streamed}, elapsed_s: {elapsed_s:.3f}, rate: {rate_hz:.1f} Hz, tx: {mbps:.2f} Mb/s')
 
-        return {
+        result = {
             "frames": frames_streamed,
             "elapsed_s": elapsed_s,
             "rate_hz": rate_hz,
@@ -679,7 +762,17 @@ class ArenaInterface():
             "tx_mbps": mbps,
             "duration_requested_s": runtime_duration_s,
             "frames_target": frames_target,
+            "frame_bytes": int(frame_size),
+            "stream_header_bytes": 7,
+            "bytes_per_frame": int(frame_size) + 7,
         }
+
+        if collect_timings and cmd_rtt_ms_samples:
+            result["cmd_rtt_ms"] = self._bench_summarize_ms(cmd_rtt_ms_samples)
+            result["send_ms"] = self._bench_summarize_ms(send_ms_samples)
+            result["response_wait_ms"] = self._bench_summarize_ms(resp_wait_ms_samples)
+
+        return result
 
     def all_off_str(self):
         """Turn all panels off with string."""
@@ -1101,6 +1194,7 @@ class ArenaInterface():
             analog_out_waveform: str = "constant",
             analog_update_rate: float = 1.0,
             analog_frequency: float = 0.0,
+            collect_timings: bool = True,
     ) -> dict:
         """Benchmark STREAM_FRAME throughput using `stream_frames()`.
 
@@ -1128,6 +1222,7 @@ class ArenaInterface():
             float(analog_frequency),
             stream_cmd_coalesced=bool(stream_cmd_coalesced),
             progress_interval_s=float(progress_interval_s),
+            collect_timings=bool(collect_timings),
         )
         stats.update(
             {
