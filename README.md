@@ -85,14 +85,16 @@ For Ethernet benchmarks, the simplest setup is:
 
 ```sh
 export ARENA_ETH_IP=192.168.10.104
-pixi run bench -- --stream-path patterns/pat0004.pat --json-out bench_results.jsonl
+pixi run bench-full -- --json-out bench_results.jsonl
 ```
 
 Useful pre-defined tasks:
 
 - `pixi run all-on`: turn all LEDs on as a communication sanity check
 - `pixi run all-off`: turn all LEDs off as a communication sanity check
-- `pixi run bench`: default host benchmark suite
+- `pixi run bench`: default host-side suite (`command_rtt` + `spf_updates`)
+- `pixi run bench-full`: default host-side suite plus `stream_frames` using `patterns/pat0004.pat`
+- `pixi run bench-smoke`: shorter full run for quick confidence checks
 - `pixi run bench-persistent`: force persistent TCP sockets for small-command RTT
 - `pixi run bench-new-connection`: open a new TCP connection per command
 - `pixi run bench-no-quickack`: disable Linux `TCP_QUICKACK` but keep `TCP_NODELAY`
@@ -102,6 +104,70 @@ Useful pre-defined tasks:
 
 Extra arguments after the task are forwarded to the CLI or script, so you can
 still customize labels, durations, rates, and pattern paths.
+
+Examples:
+
+```sh
+pixi run bench -- --json-out host_only.jsonl
+pixi run bench-full -- --json-out host_plus_stream.jsonl
+pixi run bench-full -- --stream-rate 250 --stream-seconds 8 --json-out stream_250hz.jsonl
+```
+
+## Benchmark progress, timeouts, and failure reporting
+
+The benchmark command now prints phase start and finish lines as it runs, along
+with throttled in-phase progress for the long loops. That makes it much easier
+to tell whether a run is healthy, slow, or stuck.
+
+By default, the benchmark suite applies a temporary per-operation I/O timeout of
+`5.0` seconds. This avoids the old behavior where a missing reply could block a
+run forever.
+
+You can override that timeout from the CLI:
+
+```sh
+pixi run bench -- --io-timeout 10
+pixi run bench-full -- --io-timeout 0
+```
+
+Use `--io-timeout 0` to disable the temporary benchmark timeout and fall back to
+blocking I/O.
+
+If a phase fails, the suite now:
+
+- records `status=error`
+- records the failed phase name and exception in the JSON result
+- attempts a best-effort `ALL_OFF` cleanup before returning
+- exits the CLI with a nonzero status
+
+This makes it much easier to automate benchmarks in CI-like shell scripts or
+lab orchestration scripts.
+
+## Host-only benchmarks versus QS logs
+
+The Python benchmark suite is enough to compare host-visible and end-to-end
+behavior across:
+
+- operating systems
+- host machines
+- NICs, switches, and cables
+- socket-option policies such as `TCP_NODELAY` and `TCP_QUICKACK`
+
+The JSON output is therefore a good default artifact for broad comparisons
+across rigs.
+
+QS logs are still important when you need firmware-internal detail, including:
+
+- `PERF_NET` poll cadence and command processing cost
+- `PERF_UPD` receive / process / commit / applied / coalesced counts
+- display-transfer and SPI bottlenecks
+- confirmation that the rig applied what the host sent
+
+A practical workflow is:
+
+1. Run Python-only benchmarks everywhere for broad comparison.
+2. Capture QS logs on representative runs or anomalous runs.
+3. Use the QS logs to explain why two host-visible results differ.
 
 ## Socket latency tuning
 

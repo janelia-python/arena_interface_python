@@ -86,6 +86,8 @@ check = [{ task = "lint" }, { task = "test" }]
 build = "python -m build"
 archive = "git archive --format=zip --output=../arena_interface_python.zip HEAD"
 bench = "arena-interface bench"
+bench-full = "arena-interface bench --stream-path patterns/pat0004.pat"
+bench-smoke = "arena-interface bench --cmd-iters 250 --spf-seconds 2 --stream-path patterns/pat0004.pat --stream-seconds 2"
 bench-persistent = "arena-interface bench --cmd-connect-mode persistent"
 bench-new-connection = "arena-interface bench --cmd-connect-mode new_connection"
 bench-no-quickack = "arena-interface --no-tcp-quickack bench"

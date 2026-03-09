@@ -13,7 +13,7 @@ if __package__ in {None, ""}:
         sys.path.insert(0, str(src_root))
 
 from arena_interface import ArenaInterface
-from arena_interface.arena_interface import SERIAL_BAUDRATE
+from arena_interface.arena_interface import BENCH_IO_TIMEOUT_S, SERIAL_BAUDRATE
 
 VARIANTS: dict[str, dict[str, bool]] = {
     "default": {"tcp_nodelay": True, "tcp_quickack": True},
@@ -59,6 +59,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--stream-seconds", type=float, default=5.0)
     parser.add_argument("--stream-coalesced", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--progress-interval", type=float, default=1.0)
+    parser.add_argument(
+        "--io-timeout",
+        type=float,
+        default=BENCH_IO_TIMEOUT_S,
+        help="Temporary per-read/connect timeout for each suite run in seconds. Use 0 to disable.",
+    )
     return parser
 
 
@@ -67,11 +73,20 @@ def variant_label(base_label: str | None, variant_name: str) -> str:
 
 
 def print_summary(variant_name: str, suite: dict) -> None:
+    meta = suite.get("meta", {})
+    quickack = meta.get("tcp_quickack_supported") and meta.get("tcp_quickack_requested")
+    status = suite.get("status", "unknown")
+
+    if status != "ok":
+        error = suite.get("error") or {}
+        print(
+            f"{variant_name:>18} | FAILED {error.get('phase')} {error.get('type')}: {error.get('message')}"
+        )
+        return
+
     cmd = suite["command_rtt"]
     spf = suite["spf_updates"]
     stream = suite.get("stream_frames")
-    meta = suite.get("meta", {})
-    quickack = meta.get("tcp_quickack_supported") and meta.get("tcp_quickack_requested")
 
     line = (
         f"{variant_name:>18} | cmd mean={cmd['mean_ms']:.3f} ms p99={cmd['p99_ms']:.3f} | "
@@ -96,6 +111,7 @@ def configure_transport(ai: ArenaInterface, args: argparse.Namespace) -> None:
 
 def main() -> int:
     args = build_parser().parse_args()
+    exit_code = 0
 
     print("variant               | command RTT               | SPF        | socket policy")
     print("----------------------+---------------------------+------------+-------------------------------")
@@ -125,12 +141,16 @@ def main() -> int:
                 stream_seconds=float(args.stream_seconds),
                 stream_coalesced=bool(args.stream_coalesced),
                 progress_interval_s=float(args.progress_interval),
+                bench_io_timeout_s=float(args.io_timeout),
+                status_callback=print,
             )
             if args.json_out is not None:
                 ArenaInterface.write_bench_jsonl(str(args.json_out), suite)
             print_summary(variant_name, suite)
+            if suite.get("status") != "ok":
+                exit_code = 1
 
-    return 0
+    return exit_code
 
 
 if __name__ == "__main__":

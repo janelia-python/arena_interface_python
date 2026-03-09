@@ -6,10 +6,110 @@ from pathlib import Path
 
 import click
 
-from .arena_interface import ArenaInterface, SERIAL_BAUDRATE
+from .arena_interface import ArenaInterface, BENCH_IO_TIMEOUT_S, SERIAL_BAUDRATE
 
 
 pass_arena_interface = click.make_pass_decorator(ArenaInterface)
+
+
+def _print_phase_history(suite: dict) -> None:
+    phases = suite.get("phases") or []
+    if not phases:
+        return
+
+    click.echo("\n-- phases --")
+    for phase in phases:
+        line = (
+            f"{phase.get('name')}: status={phase.get('status')} "
+            f"elapsed_s={float(phase.get('elapsed_s', 0.0)):.3f}"
+        )
+        if phase.get("error"):
+            line += f" error={phase.get('error_type')}: {phase.get('error')}"
+        click.echo(line)
+
+
+def _print_suite_summary(
+    suite: dict,
+    *,
+    include_connect: bool,
+    stream_requested: bool,
+) -> None:
+    meta = suite.get("meta", {})
+    click.echo(
+        f"meta: label={meta.get('label')} host={meta.get('hostname')} "
+        f"python={meta.get('python')} transport={meta.get('transport')} eth_ip={meta.get('ethernet_ip')} "
+        f"io_timeout={meta.get('bench_io_timeout_s')}"
+    )
+
+    if include_connect and ("connect_time" in suite):
+        ct = suite["connect_time"]
+        click.echo("\n-- connect_time (TCP connect) --")
+        click.echo(
+            "iters={iters}  errors={errors}  mean={mean_ms:.3f} ms  min={min_ms:.3f}  p50={p50_ms:.3f}  "
+            "p95={p95_ms:.3f}  p99={p99_ms:.3f}  max={max_ms:.3f}".format(**ct)
+        )
+
+    if "command_rtt" in suite:
+        click.echo("\n-- command_rtt (get_perf_stats) --")
+        cmd = suite["command_rtt"]
+        click.echo(
+            "iters={iters}  mean={mean_ms:.3f} ms  min={min_ms:.3f}  p50={p50_ms:.3f}  "
+            "p95={p95_ms:.3f}  p99={p99_ms:.3f}  max={max_ms:.3f}  reconnects={reconnects}".format(
+                **cmd
+            )
+        )
+
+    if "spf_updates" in suite:
+        click.echo("\n-- spf_updates (show_pattern_frame + update_pattern_frame) --")
+        spf = suite["spf_updates"]
+        click.echo(
+            "updates={updates}  elapsed_s={elapsed_s:.3f}  target={target_hz:.1f} Hz  achieved={achieved_hz:.1f} Hz  "
+            "p99_update_rtt={p99:.3f} ms  reconnects={reconnects}".format(
+                updates=spf["updates"],
+                elapsed_s=spf["elapsed_s"],
+                target_hz=spf["target_hz"],
+                achieved_hz=spf["achieved_hz"],
+                p99=spf["update_rtt_ms"]["p99_ms"],
+                reconnects=spf["reconnects"],
+            )
+        )
+
+    if stream_requested and ("stream_frames" in suite):
+        click.echo("\n-- stream_frames --")
+        st = suite["stream_frames"]
+
+        extra = ""
+        if isinstance(st.get("cmd_rtt_ms"), dict):
+            cmd = st.get("cmd_rtt_ms") or {}
+            send = st.get("send_ms") if isinstance(st.get("send_ms"), dict) else {}
+            wait = st.get("response_wait_ms") if isinstance(st.get("response_wait_ms"), dict) else {}
+            extra = "  rtt_p99={p99:.3f} ms (send_p99={sp99:.3f} ms wait_p99={wp99:.3f} ms)".format(
+                p99=float(cmd.get("p99_ms", float("nan"))),
+                sp99=float(send.get("p99_ms", float("nan"))),
+                wp99=float(wait.get("p99_ms", float("nan"))),
+            )
+
+        click.echo(
+            "frames={frames}  elapsed_s={elapsed_s:.3f}  rate={rate_hz:.1f} Hz  tx={tx_mbps:.2f} Mb/s  reconnects={reconnects}{extra}".format(
+                frames=st.get("frames"),
+                elapsed_s=st.get("elapsed_s"),
+                rate_hz=st.get("rate_hz"),
+                tx_mbps=st.get("tx_mbps"),
+                reconnects=st.get("reconnects"),
+                extra=extra,
+            )
+        )
+
+    _print_phase_history(suite)
+
+    cleanup = suite.get("cleanup") or {}
+    if cleanup.get("all_off_attempted"):
+        click.echo(
+            "\ncleanup: all_off_ok={ok} error={err}".format(
+                ok=cleanup.get("all_off_ok"),
+                err=cleanup.get("all_off_error"),
+            )
+        )
 
 
 @click.group()
@@ -188,6 +288,12 @@ def get_perf_stats(arena_interface: ArenaInterface):
 @click.option("--stream-seconds", default=5.0, show_default=True, help="Seconds to run stream_frames")
 @click.option("--stream-coalesced/--stream-chunked", default=True, show_default=True)
 @click.option("--progress-interval", default=1.0, show_default=True, help="Progress print interval (seconds)")
+@click.option(
+    "--io-timeout",
+    default=BENCH_IO_TIMEOUT_S,
+    show_default=True,
+    help="Temporary per-read/connect timeout for the benchmark suite in seconds. Use 0 to disable.",
+)
 @pass_arena_interface
 def bench(
     arena_interface: ArenaInterface,
@@ -208,6 +314,7 @@ def bench(
     stream_seconds: float,
     stream_coalesced: bool,
     progress_interval: float,
+    io_timeout: float,
 ):
     """Run a small, repeatable host-side benchmark suite.
 
@@ -233,89 +340,29 @@ def bench(
         stream_seconds=float(stream_seconds),
         stream_coalesced=bool(stream_coalesced),
         progress_interval_s=float(progress_interval),
+        bench_io_timeout_s=float(io_timeout),
+        status_callback=click.echo,
     )
 
-    meta = suite.get("meta", {})
-    click.echo(
-        f"meta: label={meta.get('label')} host={meta.get('hostname')} "
-        f"python={meta.get('python')} transport={meta.get('transport')} eth_ip={meta.get('ethernet_ip')}"
+    _print_suite_summary(
+        suite,
+        include_connect=bool(include_connect),
+        stream_requested=stream_path is not None,
     )
 
-    # ------------------------------------------------------------------
-    # Connect timing (optional)
-    # ------------------------------------------------------------------
-    if include_connect and ("connect_time" in suite):
-        ct = suite["connect_time"]
-        click.echo("\n-- connect_time (TCP connect) --")
-        click.echo(
-            "iters={iters}  errors={errors}  mean={mean_ms:.3f} ms  min={min_ms:.3f}  p50={p50_ms:.3f}  "
-            "p95={p95_ms:.3f}  p99={p99_ms:.3f}  max={max_ms:.3f}".format(**ct)
-        )
-
-    # ------------------------------------------------------------------
-    # Command RTT test (small request/response)
-    # ------------------------------------------------------------------
-    click.echo("\n-- command_rtt (get_perf_stats) --")
-    cmd = suite["command_rtt"]
-    click.echo(
-        "iters={iters}  mean={mean_ms:.3f} ms  min={min_ms:.3f}  p50={p50_ms:.3f}  "
-        "p95={p95_ms:.3f}  p99={p99_ms:.3f}  max={max_ms:.3f}  reconnects={reconnects}".format(**cmd)
-    )
-
-    # ------------------------------------------------------------------
-    # SPF update loop
-    # ------------------------------------------------------------------
-    click.echo("\n-- spf_updates (show_pattern_frame + update_pattern_frame) --")
-    spf = suite["spf_updates"]
-    click.echo(
-        "updates={updates}  elapsed_s={elapsed_s:.3f}  target={target_hz:.1f} Hz  achieved={achieved_hz:.1f} Hz  "
-        "p99_update_rtt={p99:.3f} ms  reconnects={reconnects}".format(
-            updates=spf["updates"],
-            elapsed_s=spf["elapsed_s"],
-            target_hz=spf["target_hz"],
-            achieved_hz=spf["achieved_hz"],
-            p99=spf["update_rtt_ms"]["p99_ms"],
-            reconnects=spf["reconnects"],
-        )
-    )
-
-    # ------------------------------------------------------------------
-    # Stream frames (optional)
-    # ------------------------------------------------------------------
-    if stream_path is not None and ("stream_frames" in suite):
-        click.echo("\n-- stream_frames --")
-        st = suite["stream_frames"]
-
-        extra = ""
-        if isinstance(st.get("cmd_rtt_ms"), dict):
-            cmd = st.get("cmd_rtt_ms") or {}
-            send = st.get("send_ms") if isinstance(st.get("send_ms"), dict) else {}
-            wait = st.get("response_wait_ms") if isinstance(st.get("response_wait_ms"), dict) else {}
-            extra = "  rtt_p99={p99:.3f} ms (send_p99={sp99:.3f} ms wait_p99={wp99:.3f} ms)".format(
-                p99=float(cmd.get("p99_ms", float("nan"))),
-                sp99=float(send.get("p99_ms", float("nan"))),
-                wp99=float(wait.get("p99_ms", float("nan"))),
-            )
-
-        click.echo(
-            "frames={frames}  elapsed_s={elapsed_s:.3f}  rate={rate_hz:.1f} Hz  tx={tx_mbps:.2f} Mb/s  reconnects={reconnects}{extra}".format(
-                frames=st.get("frames"),
-                elapsed_s=st.get("elapsed_s"),
-                rate_hz=st.get("rate_hz"),
-                tx_mbps=st.get("tx_mbps"),
-                reconnects=st.get("reconnects"),
-                extra=extra,
-            )
-        )
-
-
-
-    # ------------------------------------------------------------------
-    # Persist results
-    # ------------------------------------------------------------------
     if json_out is not None:
         ArenaInterface.write_bench_jsonl(str(json_out), suite)
         click.echo(f"\nappended JSONL: {json_out}")
+
+    if suite.get("status") != "ok":
+        error = suite.get("error") or {}
+        raise click.ClickException(
+            "benchmark failed in {phase}: {etype}: {message}".format(
+                phase=error.get("phase"),
+                etype=error.get("type"),
+                message=error.get("message"),
+            )
+        )
 
     click.echo("\nBench done. Capture the QS PERF_* lines to compare device-side timings.\n")
 

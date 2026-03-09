@@ -1,23 +1,24 @@
 """Python interface to the Reiser lab ArenaController."""
 from __future__ import annotations
 
-import math
-import socket
-import struct
-import time
-import serial
 import atexit
-import re
-import subprocess
-
+import cProfile
+from contextlib import contextmanager
 import datetime
 import json
+import math
 import platform
-import statistics
-import sys
-
-import cProfile
 import pstats
+import re
+import socket
+import statistics
+import struct
+import subprocess
+import sys
+import time
+from typing import Callable
+
+import serial
 
 
 ETHERNET_SERVER_PORT = 62222
@@ -35,10 +36,13 @@ SERIAL_TIMEOUT = None
 SERIAL_BAUDRATE = 115200
 ANALOG_OUTPUT_VALUE_MIN = 100
 ANALOG_OUTPUT_VALUE_MAX = 4095
+BENCH_IO_TIMEOUT_S = 5.0
 
 # Chunk size used for optional STREAM_FRAME chunked sends.
 # Keep this comfortably below typical MTU to avoid excessive fragmentation.
 CHUNK_SIZE = 4096
+
+StatusCallback = Callable[[str], None]
 
 
 class ArenaInterface:
@@ -51,6 +55,8 @@ class ArenaInterface:
         tcp_nodelay: bool = True,
         tcp_quickack: bool = True,
         keepalive: bool = True,
+        socket_timeout_s: float | None = SOCKET_TIMEOUT,
+        serial_timeout_s: float | None = SERIAL_TIMEOUT,
     ):
         """Initialize an ArenaInterface instance."""
         self._debug = bool(debug)
@@ -65,6 +71,8 @@ class ArenaInterface:
         self._tcp_quickack_last_applied = False
         self._tcp_quickack_apply_errors = 0
         self._keepalive = bool(keepalive)
+        self._socket_timeout_s = self._coerce_timeout(socket_timeout_s)
+        self._serial_timeout_s = self._coerce_timeout(serial_timeout_s)
         atexit.register(self._exit)
 
     def __enter__(self):
@@ -79,6 +87,29 @@ class ArenaInterface:
         if self._debug:
             print(*args)
 
+    @staticmethod
+    def _coerce_timeout(timeout_s: float | None) -> float | None:
+        """Normalize timeout inputs.
+
+        A value of ``None`` or ``<= 0`` means "block indefinitely".
+        """
+        if timeout_s is None:
+            return None
+        timeout = float(timeout_s)
+        if timeout <= 0:
+            return None
+        return timeout
+
+    @staticmethod
+    def _utc_now_iso() -> str:
+        """Return the current UTC time in ISO-8601 format."""
+        return datetime.datetime.now(datetime.timezone.utc).isoformat()
+
+    def _bench_emit_status(self, status_callback: StatusCallback | None, message: str) -> None:
+        """Emit a benchmark status line, if requested."""
+        if status_callback is not None:
+            status_callback(str(message))
+
     def _exit(self):
         """
         Close the serial connection to provide some clean up.
@@ -88,6 +119,70 @@ class ArenaInterface:
         except Exception:
             # Best-effort cleanup only.
             pass
+
+    def set_transport_timeouts(
+        self,
+        *,
+        socket_timeout_s: float | None,
+        serial_timeout_s: float | None,
+    ) -> None:
+        """Set default transport timeouts for newly opened and persistent links."""
+        self._socket_timeout_s = self._coerce_timeout(socket_timeout_s)
+        self._serial_timeout_s = self._coerce_timeout(serial_timeout_s)
+
+        if self._ethernet_socket is not None:
+            try:
+                self._ethernet_socket.settimeout(self._socket_timeout_s)
+            except OSError:
+                pass
+
+        if self._serial is not None:
+            self._serial.timeout = self._serial_timeout_s
+
+    @contextmanager
+    def temporary_transport_timeouts(
+        self,
+        *,
+        socket_timeout_s: float | None,
+        serial_timeout_s: float | None,
+    ):
+        """Temporarily override transport timeouts within a context."""
+        prev_socket_timeout_s = self._socket_timeout_s
+        prev_serial_timeout_s = self._serial_timeout_s
+        self.set_transport_timeouts(
+            socket_timeout_s=socket_timeout_s,
+            serial_timeout_s=serial_timeout_s,
+        )
+        try:
+            yield
+        finally:
+            self.set_transport_timeouts(
+                socket_timeout_s=prev_socket_timeout_s,
+                serial_timeout_s=prev_serial_timeout_s,
+            )
+
+    @staticmethod
+    def _format_exception(exc: BaseException) -> str:
+        """Return a compact exception description for logs/results."""
+        return f"{type(exc).__name__}: {exc}"
+
+    def _safe_all_off(
+        self,
+        *,
+        status_callback: StatusCallback | None = None,
+        context: str = "bench cleanup",
+    ) -> str | None:
+        """Best-effort ALL_OFF used by benchmark cleanup paths."""
+        try:
+            self.all_off()
+            self._bench_emit_status(status_callback, f"[bench] {context}: ALL_OFF ok")
+            return None
+        except Exception as exc:
+            message = self._format_exception(exc)
+            self._socket_last_error = message
+            self._bench_emit_status(status_callback, f"[bench] {context}: ALL_OFF failed: {message}")
+            self._close_ethernet_socket()
+            return message
 
     def _refresh_quickack(self, ethernet_socket: socket.socket) -> None:
         """Best-effort refresh of TCP_QUICKACK on Linux.
@@ -139,7 +234,7 @@ class ArenaInterface:
 
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self._apply_socket_latency_options(s)
-        s.settimeout(SOCKET_TIMEOUT)
+        s.settimeout(self._socket_timeout_s)
         s.connect((self._ethernet_ip_address, ETHERNET_SERVER_PORT))
         self._refresh_quickack(s)
         return s
@@ -219,6 +314,8 @@ class ArenaInterface:
                 self._serial.write(cmd)
             t1 = time.perf_counter_ns()
             resp_len = self._serial.read(1)
+            if not resp_len:
+                raise TimeoutError("serial response length timed out")
             response = resp_len + self._serial.read(int(resp_len[0]))
             t2 = time.perf_counter_ns()
             payload = response[3:]
@@ -334,7 +431,7 @@ class ArenaInterface:
         self._serial = serial.Serial()
         self._serial.port = port
         self._serial.baudrate = baudrate
-        self._serial.timeout = SERIAL_TIMEOUT
+        self._serial.timeout = self._serial_timeout_s
         self._serial.open()
         return self._serial.is_open
 
@@ -591,6 +688,8 @@ class ArenaInterface:
             stream_cmd_coalesced=False,
             progress_interval_s=1.0,
             collect_timings: bool = False,
+            status_callback: StatusCallback | None = None,
+            stop_after: bool = True,
     ):
         """Stream a `.pattern` file's frames at a fixed rate for a fixed duration.
 
@@ -781,21 +880,21 @@ class ArenaInterface:
                     elapsed_s = (now_ns - start_time_ns) / 1e9
                     rate_hz = frames_streamed / elapsed_s if elapsed_s > 0 else 0.0
                     if frames_target:
-                        print(f'progress: {frames_streamed}/{frames_target} frames ({rate_hz:.1f} Hz)')
+                        self._bench_emit_status(status_callback, f'[bench] stream_frames: {frames_streamed}/{frames_target} frames ({rate_hz:.1f} Hz)')
                     else:
-                        print(f'progress: {frames_streamed} frames ({rate_hz:.1f} Hz)')
+                        self._bench_emit_status(status_callback, f'[bench] stream_frames: {frames_streamed} frames ({rate_hz:.1f} Hz)')
                     next_progress_ns += int(progress_interval_s * 1e9)
 
             if frame_period_ns:
                 next_frame_deadline_ns += frame_period_ns
             i += 1
-        # End the mode
-        self._send_and_receive(bytes([1, 0]))
+        if stop_after:
+            self._send_and_receive(bytes([1, 0]))
 
         elapsed_s = (time.perf_counter_ns() - start_time_ns) / 1e9
         rate_hz = frames_streamed / elapsed_s if elapsed_s > 0 else 0.0
         mbps = (bytes_sent * 8) / (elapsed_s * 1e6) if elapsed_s > 0 else 0.0
-        print(f'frames streamed: {frames_streamed}, elapsed_s: {elapsed_s:.3f}, rate: {rate_hz:.1f} Hz, tx: {mbps:.2f} Mb/s')
+        self._bench_emit_status(status_callback, f'[bench] stream_frames: frames={frames_streamed} elapsed_s={elapsed_s:.3f} rate={rate_hz:.1f} Hz tx={mbps:.2f} Mb/s')
 
         result = {
             "frames": frames_streamed,
@@ -879,6 +978,38 @@ class ArenaInterface:
             "max_ms": float(values[-1]),
         }
 
+    def _bench_progress_maybe(
+        self,
+        *,
+        status_callback: StatusCallback | None,
+        phase: str,
+        completed: int,
+        total: int | None,
+        started_ns: int,
+        next_progress_ns: int | None,
+        progress_interval_s: float,
+    ) -> int | None:
+        """Emit throttled benchmark progress and return the next deadline."""
+        if next_progress_ns is None:
+            return None
+
+        now_ns = time.perf_counter_ns()
+        if now_ns < next_progress_ns:
+            return next_progress_ns
+
+        elapsed_s = (now_ns - started_ns) / 1e9
+        rate = (completed / elapsed_s) if elapsed_s > 0 else 0.0
+        if total is None:
+            detail = f"{completed} completed"
+        else:
+            detail = f"{completed}/{total} completed"
+        self._bench_emit_status(status_callback, f"[bench] {phase}: {detail} ({rate:.1f}/s)")
+
+        step_ns = max(1, int(float(progress_interval_s) * 1e9))
+        while next_progress_ns <= now_ns:
+            next_progress_ns += step_ns
+        return next_progress_ns
+
     def bench_metadata(self, label: str | None = None) -> dict:
         """Return a small metadata blob to attach to benchmark results."""
         try:
@@ -902,6 +1033,8 @@ class ArenaInterface:
             "tcp_quickack_last_applied": self._tcp_quickack_last_applied,
             "tcp_quickack_apply_errors": self._tcp_quickack_apply_errors,
             "socket_keepalive": self._keepalive,
+            "socket_timeout_s": self._socket_timeout_s,
+            "serial_timeout_s": self._serial_timeout_s,
         }
 
         # Best-effort socket endpoint capture (only if a persistent socket exists).
@@ -1004,6 +1137,8 @@ class ArenaInterface:
             wrap_mode: bool = True,
             connect_mode: str = "persistent",
             warmup: int = 20,
+            progress_interval_s: float = 1.0,
+            status_callback: StatusCallback | None = None,
     ) -> dict:
         """Measure host-side RTT for a small request/response command.
 
@@ -1034,73 +1169,95 @@ class ArenaInterface:
         # Clear any prior socket error so results are per-run.
         self._socket_last_error = None
 
-
         reconnects_before = self.get_socket_reconnects(reset=False)
+        cleanup_error: str | None = None
+        progress_step_ns = max(1, int(float(progress_interval_s) * 1e9)) if progress_interval_s > 0 else 0
 
-        if wrap_mode:
-            self.all_on()
+        try:
+            if wrap_mode:
+                self.all_on()
 
-        self.reset_perf_stats()
+            self.reset_perf_stats()
 
-        # Warmup
-        for _ in range(int(warmup)):
-            if connect_mode == "persistent":
-                self.get_perf_stats()
-            else:
-                s = self._open_ethernet_socket()
-                try:
-                    self.get_perf_stats(ethernet_socket=s)
-                finally:
-                    s.close()
+            # Warmup
+            for _ in range(int(warmup)):
+                if connect_mode == "persistent":
+                    self.get_perf_stats()
+                else:
+                    s = self._open_ethernet_socket()
+                    try:
+                        self.get_perf_stats(ethernet_socket=s)
+                    finally:
+                        s.close()
 
-        rtts_ms: list[float] = []
-        bytes_tx = 0
-        bytes_rx = 0
-        errors = 0
+            rtts_ms: list[float] = []
+            bytes_tx = 0
+            bytes_rx = 0
+            errors = 0
+            measure_start_ns = time.perf_counter_ns()
+            next_progress_ns = (
+                measure_start_ns + progress_step_ns if progress_step_ns > 0 else None
+            )
 
-        for _ in range(int(iters)):
-            if connect_mode == "persistent":
-                t0 = time.perf_counter_ns()
-                payload = self.get_perf_stats()
-                t1 = time.perf_counter_ns()
-                rtts_ms.append((t1 - t0) / 1e6)
-                bytes_tx += 2  # b'\x01\x71'
-                bytes_rx += (len(payload) + 3)  # status + echo + payload (length excluded)
-            else:
-                s = self._open_ethernet_socket()
-                try:
+            for iteration in range(int(iters)):
+                if connect_mode == "persistent":
                     t0 = time.perf_counter_ns()
-                    payload = self.get_perf_stats(ethernet_socket=s)
+                    payload = self.get_perf_stats()
                     t1 = time.perf_counter_ns()
                     rtts_ms.append((t1 - t0) / 1e6)
-                    bytes_tx += 2
-                    bytes_rx += (len(payload) + 3)
-                except Exception:
-                    errors += 1
-                finally:
+                    bytes_tx += 2  # b'q'
+                    bytes_rx += (len(payload) + 3)  # status + echo + payload (length excluded)
+                else:
+                    s = self._open_ethernet_socket()
                     try:
-                        s.close()
+                        t0 = time.perf_counter_ns()
+                        payload = self.get_perf_stats(ethernet_socket=s)
+                        t1 = time.perf_counter_ns()
+                        rtts_ms.append((t1 - t0) / 1e6)
+                        bytes_tx += 2
+                        bytes_rx += (len(payload) + 3)
                     except Exception:
-                        pass
+                        errors += 1
+                    finally:
+                        try:
+                            s.close()
+                        except Exception:
+                            pass
 
-        summary = self._bench_summarize_ms(rtts_ms)
-        reconnects_after = self.get_socket_reconnects(reset=False)
+                next_progress_ns = self._bench_progress_maybe(
+                    status_callback=status_callback,
+                    phase="command_rtt",
+                    completed=iteration + 1,
+                    total=int(iters),
+                    started_ns=measure_start_ns,
+                    next_progress_ns=next_progress_ns,
+                    progress_interval_s=float(progress_interval_s),
+                )
 
-        summary.update(
-            {
-                "iters": int(iters),
-                "warmup": int(warmup),
-                "connect_mode": connect_mode,
-                "bytes_tx": int(bytes_tx),
-                "bytes_rx": int(bytes_rx),
-                "errors": int(errors),
-                "reconnects": int(reconnects_after - reconnects_before),
-                "last_socket_error": self._socket_last_error,
-            }
-        )
+            summary = self._bench_summarize_ms(rtts_ms)
+            reconnects_after = self.get_socket_reconnects(reset=False)
 
-        if wrap_mode:
-            self.all_off()
+            summary.update(
+                {
+                    "iters": int(iters),
+                    "warmup": int(warmup),
+                    "connect_mode": connect_mode,
+                    "bytes_tx": int(bytes_tx),
+                    "bytes_rx": int(bytes_rx),
+                    "errors": int(errors),
+                    "reconnects": int(reconnects_after - reconnects_before),
+                    "last_socket_error": self._socket_last_error,
+                }
+            )
+        finally:
+            if wrap_mode:
+                cleanup_error = self._safe_all_off(
+                    status_callback=status_callback,
+                    context="command_rtt cleanup",
+                )
+
+        if cleanup_error is not None:
+            raise RuntimeError(f"command_rtt cleanup failed: {cleanup_error}")
 
         return summary
 
@@ -1113,6 +1270,8 @@ class ArenaInterface:
             frame_max: int = 1000,
             pacing: str = "target",
             warmup: int = 0,
+            progress_interval_s: float = 1.0,
+            status_callback: StatusCallback | None = None,
     ) -> dict:
         """Benchmark SHOW_PATTERN_FRAME update performance (SPF).
 
@@ -1137,101 +1296,123 @@ class ArenaInterface:
         self._socket_last_error = None
 
         reconnects_before = self.get_socket_reconnects(reset=False)
+        cleanup_error: str | None = None
+        progress_step_ns = max(1, int(float(progress_interval_s) * 1e9)) if progress_interval_s > 0 else 0
 
-        self.reset_perf_stats()
+        try:
+            self.reset_perf_stats()
 
-        # Some firmware builds use TRIAL_PARAMS.frame_rate as target_hz.
-        self.show_pattern_frame(int(pattern_id), int(frame_min), frame_rate=int(rate_hz))
+            # Some firmware builds use TRIAL_PARAMS.frame_rate as target_hz.
+            self.show_pattern_frame(int(pattern_id), int(frame_min), frame_rate=int(rate_hz))
 
-        # Warmup updates (not recorded)
-        frame = int(frame_min)
-        for _ in range(int(warmup)):
-            self.update_pattern_frame(frame)
-            frame += 1
-            if frame > int(frame_max):
-                frame = int(frame_min)
+            # Warmup updates (not recorded)
+            frame = int(frame_min)
+            for _ in range(int(warmup)):
+                self.update_pattern_frame(frame)
+                frame += 1
+                if frame > int(frame_max):
+                    frame = int(frame_min)
 
-        start_ns = time.perf_counter_ns()
-        end_ns = start_ns + int(float(seconds) * 1e9)
+            start_ns = time.perf_counter_ns()
+            end_ns = start_ns + int(float(seconds) * 1e9)
 
-        period_ns = int(1e9 / float(rate_hz)) if (rate_hz and rate_hz > 0) else 0
-        next_deadline_ns = start_ns + period_ns if period_ns else 0
+            period_ns = int(1e9 / float(rate_hz)) if (rate_hz and rate_hz > 0) else 0
+            next_deadline_ns = start_ns + period_ns if period_ns else 0
 
-        updates = 0
-        update_rtts_ms: list[float] = []
-        update_starts_ns: list[int] = []
-        late_starts = 0
-        max_start_lag_ns = 0
+            updates = 0
+            update_rtts_ms: list[float] = []
+            update_starts_ns: list[int] = []
+            late_starts = 0
+            max_start_lag_ns = 0
 
-        bytes_tx = 0
-        bytes_rx = 0
+            bytes_tx = 0
+            bytes_rx = 0
+            next_progress_ns = start_ns + progress_step_ns if progress_step_ns > 0 else None
 
-        while time.perf_counter_ns() < end_ns:
-            now_ns = time.perf_counter_ns()
-            if period_ns and pacing == "target":
-                # Lag relative to ideal schedule
-                sched_start_ns = start_ns + (updates * period_ns)
-                lag_ns = now_ns - sched_start_ns
-                if lag_ns > 0:
-                    late_starts += 1
-                    if lag_ns > max_start_lag_ns:
-                        max_start_lag_ns = lag_ns
+            while time.perf_counter_ns() < end_ns:
+                now_ns = time.perf_counter_ns()
+                if period_ns and pacing == "target":
+                    # Lag relative to ideal schedule
+                    sched_start_ns = start_ns + (updates * period_ns)
+                    lag_ns = now_ns - sched_start_ns
+                    if lag_ns > 0:
+                        late_starts += 1
+                        if lag_ns > max_start_lag_ns:
+                            max_start_lag_ns = lag_ns
 
-            update_starts_ns.append(now_ns)
+                update_starts_ns.append(now_ns)
 
-            t0 = time.perf_counter_ns()
-            self.update_pattern_frame(frame)
-            t1 = time.perf_counter_ns()
-            update_rtts_ms.append((t1 - t0) / 1e6)
+                t0 = time.perf_counter_ns()
+                self.update_pattern_frame(frame)
+                t1 = time.perf_counter_ns()
+                update_rtts_ms.append((t1 - t0) / 1e6)
 
-            # update_pattern_frame command is 4 bytes, response is typically 3 bytes (no payload)
-            bytes_tx += 4
-            bytes_rx += 3
+                # update_pattern_frame command is 4 bytes, response is typically 3 bytes (no payload)
+                bytes_tx += 4
+                bytes_rx += 3
 
-            updates += 1
-            frame += 1
-            if frame > int(frame_max):
-                frame = int(frame_min)
+                updates += 1
+                frame += 1
+                if frame > int(frame_max):
+                    frame = int(frame_min)
 
-            if period_ns and pacing == "target":
-                # Hybrid sleep + spin to reduce CPU load while keeping decent timing.
-                while True:
-                    now_ns = time.perf_counter_ns()
-                    remaining_ns = next_deadline_ns - now_ns
-                    if remaining_ns <= 0:
-                        break
-                    if remaining_ns > 2_000_000:  # > 2ms
-                        time.sleep((remaining_ns - 1_000_000) / 1e9)  # leave ~1ms for spin
-                    else:
-                        pass
-                next_deadline_ns += period_ns
+                next_progress_ns = self._bench_progress_maybe(
+                    status_callback=status_callback,
+                    phase="spf_updates",
+                    completed=updates,
+                    total=None,
+                    started_ns=start_ns,
+                    next_progress_ns=next_progress_ns,
+                    progress_interval_s=float(progress_interval_s),
+                )
 
-        self.all_off()
+                if period_ns and pacing == "target":
+                    # Hybrid sleep + spin to reduce CPU load while keeping decent timing.
+                    while True:
+                        now_ns = time.perf_counter_ns()
+                        remaining_ns = next_deadline_ns - now_ns
+                        if remaining_ns <= 0:
+                            break
+                        if remaining_ns > 2_000_000:  # > 2ms
+                            time.sleep((remaining_ns - 1_000_000) / 1e9)  # leave ~1ms for spin
+                        else:
+                            pass
+                    next_deadline_ns += period_ns
 
-        elapsed_s = (time.perf_counter_ns() - start_ns) / 1e9
-        achieved_hz = updates / elapsed_s if elapsed_s > 0 else 0.0
+            elapsed_s = (time.perf_counter_ns() - start_ns) / 1e9
+            achieved_hz = updates / elapsed_s if elapsed_s > 0 else 0.0
 
-        # Host-side IFI (time between update call starts)
-        ifi_ms: list[float] = []
-        for i in range(1, len(update_starts_ns)):
-            ifi_ms.append((update_starts_ns[i] - update_starts_ns[i - 1]) / 1e6)
+            # Host-side IFI (time between update call starts)
+            ifi_ms: list[float] = []
+            for i in range(1, len(update_starts_ns)):
+                ifi_ms.append((update_starts_ns[i] - update_starts_ns[i - 1]) / 1e6)
 
-        return {
-            "updates": int(updates),
-            "elapsed_s": float(elapsed_s),
-            "target_hz": float(rate_hz),
-            "achieved_hz": float(achieved_hz),
-            "pacing": pacing,
-            "warmup": int(warmup),
-            "update_rtt_ms": self._bench_summarize_ms(update_rtts_ms),
-            "host_ifi_ms": self._bench_summarize_ms(ifi_ms),
-            "late_starts": int(late_starts),
-            "max_start_lag_ms": float(max_start_lag_ns / 1e6),
-            "bytes_tx": int(bytes_tx),
-            "bytes_rx": int(bytes_rx),
-            "reconnects": int(self.get_socket_reconnects(reset=False) - reconnects_before),
-            "last_socket_error": self._socket_last_error,
-        }
+            summary = {
+                "updates": int(updates),
+                "elapsed_s": float(elapsed_s),
+                "target_hz": float(rate_hz),
+                "achieved_hz": float(achieved_hz),
+                "pacing": pacing,
+                "warmup": int(warmup),
+                "update_rtt_ms": self._bench_summarize_ms(update_rtts_ms),
+                "host_ifi_ms": self._bench_summarize_ms(ifi_ms),
+                "late_starts": int(late_starts),
+                "max_start_lag_ms": float(max_start_lag_ns / 1e6),
+                "bytes_tx": int(bytes_tx),
+                "bytes_rx": int(bytes_rx),
+                "reconnects": int(self.get_socket_reconnects(reset=False) - reconnects_before),
+                "last_socket_error": self._socket_last_error,
+            }
+        finally:
+            cleanup_error = self._safe_all_off(
+                status_callback=status_callback,
+                context="spf_updates cleanup",
+            )
+
+        if cleanup_error is not None:
+            raise RuntimeError(f"spf_updates cleanup failed: {cleanup_error}")
+
+        return summary
 
     def bench_stream_frames(
             self,
@@ -1244,6 +1425,7 @@ class ArenaInterface:
             analog_update_rate: float = 1.0,
             analog_frequency: float = 0.0,
             collect_timings: bool = True,
+            status_callback: StatusCallback | None = None,
     ) -> dict:
         """Benchmark STREAM_FRAME throughput using `stream_frames()`.
 
@@ -1258,31 +1440,44 @@ class ArenaInterface:
         self._socket_last_error = None
 
         reconnects_before = self.get_socket_reconnects(reset=False)
+        cleanup_error: str | None = None
 
-        self.reset_perf_stats()
+        try:
+            self.reset_perf_stats()
 
-        runtime_duration = int(round(float(seconds) * float(RUNTIME_DURATION_PER_SECOND)))
-        stats = self.stream_frames(
-            str(pattern_path),
-            float(frame_rate),
-            runtime_duration,
-            str(analog_out_waveform),
-            float(analog_update_rate),
-            float(analog_frequency),
-            stream_cmd_coalesced=bool(stream_cmd_coalesced),
-            progress_interval_s=float(progress_interval_s),
-            collect_timings=bool(collect_timings),
-        )
-        stats.update(
-            {
-                "pattern_path": str(pattern_path),
-                "frame_rate": float(frame_rate),
-                "seconds": float(seconds),
-                "stream_cmd_coalesced": bool(stream_cmd_coalesced),
-                "reconnects": int(self.get_socket_reconnects(reset=False) - reconnects_before),
-                "last_socket_error": self._socket_last_error,
-            }
-        )
+            runtime_duration = int(round(float(seconds) * float(RUNTIME_DURATION_PER_SECOND)))
+            stats = self.stream_frames(
+                str(pattern_path),
+                float(frame_rate),
+                runtime_duration,
+                str(analog_out_waveform),
+                float(analog_update_rate),
+                float(analog_frequency),
+                stream_cmd_coalesced=bool(stream_cmd_coalesced),
+                progress_interval_s=float(progress_interval_s),
+                collect_timings=bool(collect_timings),
+                status_callback=status_callback,
+                stop_after=False,
+            )
+            stats.update(
+                {
+                    "pattern_path": str(pattern_path),
+                    "frame_rate": float(frame_rate),
+                    "seconds": float(seconds),
+                    "stream_cmd_coalesced": bool(stream_cmd_coalesced),
+                    "reconnects": int(self.get_socket_reconnects(reset=False) - reconnects_before),
+                    "last_socket_error": self._socket_last_error,
+                }
+            )
+        finally:
+            cleanup_error = self._safe_all_off(
+                status_callback=status_callback,
+                context="stream_frames cleanup",
+            )
+
+        if cleanup_error is not None:
+            raise RuntimeError(f"stream_frames cleanup failed: {cleanup_error}")
+
         return stats
 
     def bench_suite(
@@ -1304,6 +1499,8 @@ class ArenaInterface:
             stream_seconds: float = 5.0,
             stream_coalesced: bool = True,
             progress_interval_s: float = 1.0,
+            bench_io_timeout_s: float | None = BENCH_IO_TIMEOUT_S,
+            status_callback: StatusCallback | None = None,
     ) -> dict:
         """Run a repeatable benchmark suite and return structured results.
 
@@ -1316,36 +1513,122 @@ class ArenaInterface:
         Tip: attach a `label` like "lab-switch-A / laptop-1" and save results
         to a JSONL file with `write_bench_jsonl()`.
         """
-        results: dict = {"meta": self.bench_metadata(label=label)}
+        results: dict = {
+            "meta": self.bench_metadata(label=label),
+            "status": "ok",
+            "failed_phase": None,
+            "error": None,
+            "phases": [],
+        }
+        results["meta"]["bench_io_timeout_s"] = self._coerce_timeout(bench_io_timeout_s)
 
-        if include_connect:
-            results["connect_time"] = self.bench_connect_time(iters=int(connect_iters))
+        def run_phase(name: str, fn, /, **kwargs) -> bool:
+            phase = {
+                "name": name,
+                "status": "running",
+                "started_utc": self._utc_now_iso(),
+            }
+            results["phases"].append(phase)
+            self._bench_emit_status(status_callback, f"[bench] starting {name}")
+            started_ns = time.perf_counter_ns()
+            try:
+                results[name] = fn(**kwargs)
+            except Exception as exc:
+                phase["status"] = "error"
+                phase["ended_utc"] = self._utc_now_iso()
+                phase["elapsed_s"] = (time.perf_counter_ns() - started_ns) / 1e9
+                phase["error_type"] = type(exc).__name__
+                phase["error"] = str(exc)
+                results["status"] = "error"
+                results["failed_phase"] = name
+                results["error"] = {
+                    "phase": name,
+                    "type": type(exc).__name__,
+                    "message": str(exc),
+                }
+                self._bench_emit_status(
+                    status_callback,
+                    f"[bench] FAILED {name}: {self._format_exception(exc)}",
+                )
+                cleanup_error = self._safe_all_off(
+                    status_callback=status_callback,
+                    context=f"{name} post-error cleanup",
+                )
+                if cleanup_error is not None:
+                    results["cleanup"] = {
+                        "all_off_attempted": True,
+                        "all_off_ok": False,
+                        "all_off_error": cleanup_error,
+                    }
+                else:
+                    results["cleanup"] = {
+                        "all_off_attempted": True,
+                        "all_off_ok": True,
+                        "all_off_error": None,
+                    }
+                return False
 
-        results["command_rtt"] = self.bench_command_rtt(
-            iters=int(cmd_iters),
-            wrap_mode=True,
-            connect_mode=str(cmd_connect_mode),
-        )
+            phase["status"] = "ok"
+            phase["ended_utc"] = self._utc_now_iso()
+            phase["elapsed_s"] = (time.perf_counter_ns() - started_ns) / 1e9
+            self._bench_emit_status(
+                status_callback,
+                f"[bench] finished {name} in {phase['elapsed_s']:.3f} s",
+            )
+            return True
 
-        results["spf_updates"] = self.bench_spf_updates(
-            rate_hz=float(spf_rate),
-            seconds=float(spf_seconds),
-            pattern_id=int(spf_pattern_id),
-            frame_min=int(spf_frame_min),
-            frame_max=int(spf_frame_max),
-            pacing=str(spf_pacing),
-        )
+        with self.temporary_transport_timeouts(
+            socket_timeout_s=bench_io_timeout_s,
+            serial_timeout_s=bench_io_timeout_s,
+        ):
+            if include_connect and not run_phase(
+                "connect_time",
+                self.bench_connect_time,
+                iters=int(connect_iters),
+            ):
+                return self._bench_finalize_suite_results(results)
 
-        if stream_path:
-            results["stream_frames"] = self.bench_stream_frames(
+            if not run_phase(
+                "command_rtt",
+                self.bench_command_rtt,
+                iters=int(cmd_iters),
+                wrap_mode=True,
+                connect_mode=str(cmd_connect_mode),
+                progress_interval_s=float(progress_interval_s),
+                status_callback=status_callback,
+            ):
+                return self._bench_finalize_suite_results(results)
+
+            if not run_phase(
+                "spf_updates",
+                self.bench_spf_updates,
+                rate_hz=float(spf_rate),
+                seconds=float(spf_seconds),
+                pattern_id=int(spf_pattern_id),
+                frame_min=int(spf_frame_min),
+                frame_max=int(spf_frame_max),
+                pacing=str(spf_pacing),
+                progress_interval_s=float(progress_interval_s),
+                status_callback=status_callback,
+            ):
+                return self._bench_finalize_suite_results(results)
+
+            if stream_path and not run_phase(
+                "stream_frames",
+                self.bench_stream_frames,
                 pattern_path=str(stream_path),
                 frame_rate=float(stream_rate),
                 seconds=float(stream_seconds),
                 stream_cmd_coalesced=bool(stream_coalesced),
                 progress_interval_s=float(progress_interval_s),
-            )
+                status_callback=status_callback,
+            ):
+                return self._bench_finalize_suite_results(results)
 
-        # Update socket endpoints after tests (persistent socket likely exists now)
+        return self._bench_finalize_suite_results(results)
+
+    def _bench_finalize_suite_results(self, results: dict) -> dict:
+        """Attach any late-bound metadata before returning suite results."""
         if self._ethernet_socket is not None:
             try:
                 local = self._ethernet_socket.getsockname()
@@ -1354,6 +1637,13 @@ class ArenaInterface:
                 results["meta"]["ethernet_peer"] = {"ip": peer[0], "port": peer[1]}
             except OSError:
                 pass
+
+        if "cleanup" not in results:
+            results["cleanup"] = {
+                "all_off_attempted": False,
+                "all_off_ok": None,
+                "all_off_error": None,
+            }
 
         return results
 
