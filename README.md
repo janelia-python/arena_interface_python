@@ -33,6 +33,143 @@ You can also run ad-hoc Python inside the managed environment:
 pixi run python -c "from arena_interface import ArenaInterface; print(ArenaInterface)"
 ```
 
+If you prefer an interactive shell with the package already available, use:
+
+```sh
+pixi shell
+python
+# or, if you already have IPython available in that environment:
+# ipython
+```
+
+## Interactive Python / IPython examples
+
+The most convenient way to drive the arena interactively is through the
+`ArenaInterface` class.
+
+### Ethernet example
+
+```python
+from arena_interface import ArenaInterface
+
+ai = ArenaInterface(debug=True)
+ai.set_ethernet_mode("192.168.10.104")
+
+ai.all_on()
+ai.all_off()
+ai.switch_grayscale(1)
+ai.set_refresh_rate(200)
+
+stats = ai.get_perf_stats()
+len(stats), stats.hex()[:64]
+
+ai.show_pattern_frame(pattern_id=10, frame_index=0, frame_rate=200)
+ai.update_pattern_frame(1)
+ai.update_pattern_frame(2)
+ai.all_off()
+ai.close()
+```
+
+### Serial example
+
+```python
+from arena_interface import ArenaInterface
+
+with ArenaInterface() as ai:
+    ai.set_serial_mode("/dev/ttyACM0")
+    ai.all_on()
+    ai.all_off()
+```
+
+On Windows, use a COM port such as `COM3` instead of `/dev/ttyACM0`.
+
+### Notes on the interactive API
+
+- `set_ethernet_mode("192.168.10.104")` selects Ethernet transport.
+- `set_serial_mode("/dev/ttyACM0")` or `set_serial_mode("COM3")` selects serial transport.
+- `show_pattern_frame(pattern_id, frame_index, frame_rate=200)` starts
+  `SHOW_PATTERN_FRAME` mode and displays the initial frame.
+- `update_pattern_frame(frame_index)` updates the currently shown pattern frame.
+- `get_perf_stats()` returns the raw binary perf payload from the controller.
+- `reset_perf_stats()` clears firmware-side perf counters.
+- `play_pattern(...)` and `play_pattern_analog_closed_loop(...)` are available
+  for the older play-pattern flows.
+
+## Command-line usage
+
+There are two convenient ways to use the CLI:
+
+1. Use the predefined Pixi tasks for the common operations.
+2. Run the module entry point directly with `pixi run python -m arena_interface ...`.
+
+Inside `pixi shell`, the installed console script is also available directly as
+`arena-interface`.
+
+### Discover the CLI
+
+```sh
+pixi run help
+pixi run python -m arena_interface --help
+pixi run python -m arena_interface --ethernet 192.168.10.104 --help
+```
+
+Click converts Python command names such as `all_on` into CLI commands such as
+`all-on`. The main commands are:
+
+- `all-on`
+- `all-off`
+- `set-refresh-rate`
+- `display-reset`
+- `switch-grayscale`
+- `reset-perf-stats`
+- `get-perf-stats`
+- `bench`
+
+### Ethernet command-line examples
+
+```sh
+pixi run python -m arena_interface --ethernet 192.168.10.104 all-on
+pixi run python -m arena_interface --ethernet 192.168.10.104 all-off
+pixi run python -m arena_interface --ethernet 192.168.10.104 set-refresh-rate 200
+pixi run python -m arena_interface --ethernet 192.168.10.104 switch-grayscale 1
+pixi run python -m arena_interface --ethernet 192.168.10.104 get-perf-stats
+pixi run python -m arena_interface --ethernet 192.168.10.104 reset-perf-stats
+```
+
+### Serial command-line examples
+
+```sh
+pixi run python -m arena_interface --serial /dev/ttyACM0 all-on
+pixi run python -m arena_interface --serial /dev/ttyACM0 all-off
+```
+
+Windows PowerShell example:
+
+```powershell
+pixi run python -m arena_interface --serial COM3 all-on
+pixi run python -m arena_interface --serial COM3 all-off
+```
+
+### Environment-variable based usage
+
+If you set the transport once, the short Pixi tasks become easier to use:
+
+```sh
+export ARENA_ETH_IP=192.168.10.104
+pixi run all-on
+pixi run all-off
+pixi run bench
+```
+
+PowerShell equivalent:
+
+```powershell
+$env:ARENA_ETH_IP = "192.168.10.104"
+pixi run all-on
+pixi run all-off
+pixi run bench
+```
+
 ## Quick smoke tests
 
 Before running longer benchmarks, use the `all-on` and `all-off` tasks to make
@@ -111,6 +248,7 @@ Examples:
 pixi run bench -- --json-out host_only.jsonl
 pixi run bench-full -- --json-out host_plus_stream.jsonl
 pixi run bench-full -- --stream-rate 250 --stream-seconds 8 --json-out stream_250hz.jsonl
+pixi run python -m arena_interface --ethernet 192.168.10.104 bench --cmd-iters 500 --spf-rate 250
 ```
 
 ## Benchmark progress, timeouts, and failure reporting
@@ -168,6 +306,37 @@ A practical workflow is:
 1. Run Python-only benchmarks everywhere for broad comparison.
 2. Capture QS logs on representative runs or anomalous runs.
 3. Use the QS logs to explain why two host-visible results differ.
+
+## Cross-platform notes
+
+The project configuration targets Linux, macOS, and Windows through Pixi, and
+the basic host functionality is designed to work across those operating
+systems.
+
+What is portable:
+
+- serial control through `pyserial`
+- Ethernet control through standard Python sockets
+- the Click-based CLI
+- the JSON benchmark output
+- the `all-on`, `all-off`, and `bench` workflows
+
+What is Linux-specific or Linux-enhanced:
+
+- `TCP_QUICKACK` support
+- route and interface metadata captured from `ip route get`
+- extra NIC details captured from `/sys/class/net/...`
+
+So the short answer is: yes, the code is intended to work on Linux, macOS, and
+Windows, but the Linux runs expose the most low-level socket tuning and network
+metadata.
+
+For cross-OS comparisons, the safest approach is:
+
+1. Treat `TCP_NODELAY` as the portable latency knob.
+2. Treat `TCP_QUICKACK` as Linux-specific and compare it separately.
+3. Use the same benchmark JSON schema everywhere.
+4. Use QS logs when you need to explain firmware-side differences.
 
 ## Socket latency tuning
 
