@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import math
-import os
 import socket
 import struct
 import time
@@ -42,17 +41,38 @@ ANALOG_OUTPUT_VALUE_MAX = 4095
 CHUNK_SIZE = 4096
 
 
-class ArenaInterface():
+class ArenaInterface:
     """Python interface to the Reiser lab ArenaController."""
-    def __init__(self, debug=False):
-        """Initialize a ArenaHost instance."""
-        self._debug = debug
+
+    def __init__(
+        self,
+        debug: bool = False,
+        *,
+        tcp_nodelay: bool = True,
+        tcp_quickack: bool = True,
+        keepalive: bool = True,
+    ):
+        """Initialize an ArenaInterface instance."""
+        self._debug = bool(debug)
         self._serial = None
         self._ethernet_ip_address = ''
         self._ethernet_socket: socket.socket | None = None
         self._socket_reconnects: int = 0
         self._socket_last_error: str | None = None
+        self._tcp_nodelay = bool(tcp_nodelay)
+        self._tcp_quickack_requested = bool(tcp_quickack)
+        self._tcp_quickack_supported = hasattr(socket, "TCP_QUICKACK")
+        self._tcp_quickack_last_applied = False
+        self._tcp_quickack_apply_errors = 0
+        self._keepalive = bool(keepalive)
         atexit.register(self._exit)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        self.close()
+        return False
 
     def _debug_print(self, *args):
         """Print if debug is True."""
@@ -69,6 +89,42 @@ class ArenaInterface():
             # Best-effort cleanup only.
             pass
 
+    def _refresh_quickack(self, ethernet_socket: socket.socket) -> None:
+        """Best-effort refresh of TCP_QUICKACK on Linux.
+
+        The Linux TCP stack documents TCP_QUICKACK as a non-permanent switch,
+        so re-applying it before short response reads gives a fairer basis for
+        latency comparisons when you explicitly want to test it.
+        """
+        self._tcp_quickack_last_applied = False
+        if not (self._tcp_quickack_requested and self._tcp_quickack_supported):
+            return
+        try:
+            ethernet_socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_QUICKACK, 1)
+            self._tcp_quickack_last_applied = True
+        except OSError:
+            self._tcp_quickack_apply_errors += 1
+
+    def _apply_socket_latency_options(self, ethernet_socket: socket.socket) -> None:
+        """Apply best-effort low-latency socket options to a TCP socket."""
+        ethernet_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+
+        if self._tcp_nodelay:
+            ethernet_socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        else:
+            try:
+                ethernet_socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 0)
+            except OSError:
+                pass
+
+        if self._keepalive:
+            try:
+                ethernet_socket.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
+            except OSError:
+                pass
+
+        self._refresh_quickack(ethernet_socket)
+
     def _open_ethernet_socket(self) -> socket.socket:
         """Open a new TCP socket to the firmware's Ethernet server.
 
@@ -82,23 +138,10 @@ class ArenaInterface():
             )
 
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        # Low latency for small request/response commands.
-        s.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-        # On Linux, TCP_QUICKACK asks the kernel to ACK promptly, which can
-        # reduce delayed-ACK induced jitter for tiny request/response loops.
-        if hasattr(socket, "TCP_QUICKACK"):
-            try:
-                s.setsockopt(socket.IPPROTO_TCP, socket.TCP_QUICKACK, 1)
-            except OSError:
-                pass
-        # Keepalive can help detect dead peers on long runs.
-        try:
-            s.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
-        except OSError:
-            pass
+        self._apply_socket_latency_options(s)
         s.settimeout(SOCKET_TIMEOUT)
         s.connect((self._ethernet_ip_address, ETHERNET_SERVER_PORT))
+        self._refresh_quickack(s)
         return s
 
     def _connect_ethernet_socket(self, repeat_count: int = 10, reuse: bool = True) -> socket.socket:
@@ -131,11 +174,11 @@ class ArenaInterface():
         raise last_exc if last_exc is not None else ConnectionRefusedError()
 
 
-    @staticmethod
-    def _recv_exact(ethernet_socket: socket.socket, n: int) -> bytes:
+    def _recv_exact(self, ethernet_socket: socket.socket, n: int) -> bytes:
         """Receive exactly n bytes from a TCP socket or raise on EOF."""
         data = b""
         while len(data) < n:
+            self._refresh_quickack(ethernet_socket)
             chunk = ethernet_socket.recv(n - len(data))
             if not chunk:
                 raise ConnectionError("socket closed while receiving")
@@ -853,6 +896,12 @@ class ArenaInterface():
             "transport": "serial" if (self._serial is not None) else "ethernet",
             "ethernet_ip": self._ethernet_ip_address if self._ethernet_ip_address else None,
             "serial_port": getattr(self._serial, "port", None) if self._serial is not None else None,
+            "tcp_nodelay": self._tcp_nodelay,
+            "tcp_quickack_requested": self._tcp_quickack_requested,
+            "tcp_quickack_supported": self._tcp_quickack_supported,
+            "tcp_quickack_last_applied": self._tcp_quickack_last_applied,
+            "tcp_quickack_apply_errors": self._tcp_quickack_apply_errors,
+            "socket_keepalive": self._keepalive,
         }
 
         # Best-effort socket endpoint capture (only if a persistent socket exists).

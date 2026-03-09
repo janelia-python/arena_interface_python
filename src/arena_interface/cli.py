@@ -18,7 +18,7 @@ pass_arena_interface = click.make_pass_decorator(ArenaInterface)
     "ethernet_ip",
     envvar="ARENA_ETH_IP",
     default=None,
-    help="Firmware Ethernet IP address (e.g. 192.168.1.50)",
+    help="Firmware Ethernet IP address (e.g. 192.168.10.104)",
 )
 @click.option(
     "--serial",
@@ -33,11 +33,35 @@ pass_arena_interface = click.make_pass_decorator(ArenaInterface)
     show_default=True,
     help="Serial baudrate (only used with --serial)",
 )
+@click.option(
+    "--tcp-nodelay/--no-tcp-nodelay",
+    default=True,
+    show_default=True,
+    help="Enable TCP_NODELAY on Ethernet sockets.",
+)
+@click.option(
+    "--tcp-quickack/--no-tcp-quickack",
+    default=True,
+    show_default=True,
+    help="Request TCP_QUICKACK on Linux Ethernet sockets when available.",
+)
 @click.option("--debug/--no-debug", default=False, show_default=True)
 @click.pass_context
-def cli(ctx: click.Context, ethernet_ip: str | None, serial_port: str | None, baudrate: int, debug: bool):
+def cli(
+    ctx: click.Context,
+    ethernet_ip: str | None,
+    serial_port: str | None,
+    baudrate: int,
+    tcp_nodelay: bool,
+    tcp_quickack: bool,
+    debug: bool,
+):
     """ArenaController host CLI."""
-    ai = ArenaInterface(debug=debug)
+    ai = ArenaInterface(
+        debug=debug,
+        tcp_nodelay=tcp_nodelay,
+        tcp_quickack=tcp_quickack,
+    )
 
     if ethernet_ip and serial_port:
         raise click.UsageError("Choose only one transport: --ethernet or --serial")
