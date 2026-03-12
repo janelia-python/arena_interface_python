@@ -222,7 +222,7 @@ For Ethernet benchmarks, the simplest setup is:
 
 ```sh
 export ARENA_ETH_IP=192.168.10.104
-pixi run bench-full -- --json-out bench_results.jsonl
+pixi run bench-full --json-out bench_results.jsonl
 ```
 
 Useful pre-defined tasks:
@@ -237,7 +237,7 @@ Useful pre-defined tasks:
 - `pixi run bench-no-quickack`: disable Linux `TCP_QUICKACK` but keep `TCP_NODELAY`
 - `pixi run bench-no-nodelay`: disable `TCP_NODELAY` but keep `TCP_QUICKACK` requested
 - `pixi run bench-no-latency-tuning`: disable both socket latency knobs
-- `pixi run bench-socket-matrix -- --json-out bench_matrix.jsonl`: run a small comparison matrix across socket-option variants
+- `pixi run bench-socket-matrix --json-out bench_matrix.jsonl`: run a small comparison matrix across socket-option variants
 
 Extra arguments after the task are forwarded to the CLI or script, so you can
 still customize labels, durations, rates, and pattern paths.
@@ -246,8 +246,8 @@ Examples:
 
 ```sh
 pixi run bench -- --json-out host_only.jsonl
-pixi run bench-full -- --json-out host_plus_stream.jsonl
-pixi run bench-full -- --stream-rate 250 --stream-seconds 8 --json-out stream_250hz.jsonl
+pixi run bench-full --json-out host_plus_stream.jsonl
+pixi run bench-full --stream-rate 250 --stream-seconds 8 --json-out stream_250hz.jsonl
 pixi run python -m arena_interface --ethernet 192.168.10.104 bench --cmd-iters 500 --spf-rate 250
 ```
 
@@ -264,8 +264,8 @@ run forever.
 You can override that timeout from the CLI:
 
 ```sh
-pixi run bench -- --io-timeout 10
-pixi run bench-full -- --io-timeout 0
+pixi run bench --io-timeout 10
+pixi run bench-full --io-timeout 0
 ```
 
 Use `--io-timeout 0` to disable the temporary benchmark timeout and fall back to
