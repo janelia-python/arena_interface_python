@@ -59,7 +59,7 @@ select = ["E", "F", "I", "B", "UP"]
 
 [tool.pixi.workspace]
 name = "arena-interface-python"
-version = "5.1.0"
+version = "6.0.0"
 description = "Python interface and benchmark tooling for ArenaController."
 authors = ["Peter Polidoro <peter@polidoro.io>"]
 channels = ["conda-forge"]
