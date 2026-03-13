@@ -16,3 +16,6 @@
   collection guidance for performance characterization
 - relaxed the publish workflow so release tags can be either `7.0.0` or
   `v7.0.0`
+- added a performance summary tool for benchmark JSONL files and QSPY PERF logs
+- added Windows-like benchmark task aliases and matrix entries for socket-tuning comparisons
+- downgraded post-run ALL_OFF cleanup failures to recorded benchmark warnings so completed measurements are preserved

@@ -222,3 +222,4 @@ bench_matrix*.jsonl
 bench_artifacts/
 qspy*.log
 .DS_Store
+perf_summary*.json
