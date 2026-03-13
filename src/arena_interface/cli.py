@@ -6,8 +6,7 @@ from pathlib import Path
 
 import click
 
-from .arena_interface import ArenaInterface, BENCH_IO_TIMEOUT_S, SERIAL_BAUDRATE
-
+from .arena_interface import BENCH_IO_TIMEOUT_S, SERIAL_BAUDRATE, ArenaInterface
 
 pass_arena_interface = click.make_pass_decorator(ArenaInterface)
 
@@ -82,7 +81,37 @@ def _print_suite_summary(
         if isinstance(st.get("cmd_rtt_ms"), dict):
             cmd = st.get("cmd_rtt_ms") or {}
             send = st.get("send_ms") if isinstance(st.get("send_ms"), dict) else {}
-            wait = st.get("response_wait_ms") if isinstance(st.get("response_wait_ms"), dict) else {}
+            wait = (
+                st.get("response_wait_ms") if isinstance(st.get("response_wait_ms"), dict) else {}
+            )
+            extra = "  rtt_p99={p99:.3f} ms (send_p99={sp99:.3f} ms wait_p99={wp99:.3f} ms)".format(
+                p99=float(cmd.get("p99_ms", float("nan"))),
+                sp99=float(send.get("p99_ms", float("nan"))),
+                wp99=float(wait.get("p99_ms", float("nan"))),
+            )
+
+        click.echo(
+            "frames={frames}  elapsed_s={elapsed_s:.3f}  rate={rate_hz:.1f} Hz  tx={tx_mbps:.2f} Mb/s  reconnects={reconnects}{extra}".format(
+                frames=st.get("frames"),
+                elapsed_s=st.get("elapsed_s"),
+                rate_hz=st.get("rate_hz"),
+                tx_mbps=st.get("tx_mbps"),
+                reconnects=st.get("reconnects"),
+                extra=extra,
+            )
+        )
+
+    if stream_requested and ("stream_frames_max_rate" in suite):
+        click.echo("\n-- stream_frames_max_rate (no pacing) --")
+        st = suite["stream_frames_max_rate"]
+
+        extra = ""
+        if isinstance(st.get("cmd_rtt_ms"), dict):
+            cmd = st.get("cmd_rtt_ms") or {}
+            send = st.get("send_ms") if isinstance(st.get("send_ms"), dict) else {}
+            wait = (
+                st.get("response_wait_ms") if isinstance(st.get("response_wait_ms"), dict) else {}
+            )
             extra = "  rtt_p99={p99:.3f} ms (send_p99={sp99:.3f} ms wait_p99={wp99:.3f} ms)".format(
                 p99=float(cmd.get("p99_ms", float("nan"))),
                 sp99=float(send.get("p99_ms", float("nan"))),
@@ -257,8 +286,12 @@ def get_perf_stats(arena_interface: ArenaInterface):
     show_default=True,
     help="Include a TCP connect() timing test (Ethernet only).",
 )
-@click.option("--connect-iters", default=200, show_default=True, help="Iterations for connect() timing test")
-@click.option("--cmd-iters", default=2000, show_default=True, help="Iterations for command RTT test")
+@click.option(
+    "--connect-iters", default=200, show_default=True, help="Iterations for connect() timing test"
+)
+@click.option(
+    "--cmd-iters", default=2000, show_default=True, help="Iterations for command RTT test"
+)
 @click.option(
     "--cmd-connect-mode",
     type=click.Choice(["persistent", "new_connection"], case_sensitive=False),
@@ -266,8 +299,12 @@ def get_perf_stats(arena_interface: ArenaInterface):
     show_default=True,
     help="Use a persistent socket or open/close a new TCP connection per command.",
 )
-@click.option("--spf-rate", default=200.0, show_default=True, help="Target Hz for update_pattern_frame loop")
-@click.option("--spf-seconds", default=5.0, show_default=True, help="Seconds to run update_pattern_frame loop")
+@click.option(
+    "--spf-rate", default=200.0, show_default=True, help="Target Hz for update_pattern_frame loop"
+)
+@click.option(
+    "--spf-seconds", default=5.0, show_default=True, help="Seconds to run update_pattern_frame loop"
+)
 @click.option("--spf-pattern-id", default=10, show_default=True)
 @click.option("--spf-frame-min", default=0, show_default=True)
 @click.option("--spf-frame-max", default=1000, show_default=True)
@@ -284,10 +321,31 @@ def get_perf_stats(arena_interface: ArenaInterface):
     default=None,
     help="Optional .pattern or .pat file to stream",
 )
-@click.option("--stream-rate", default=200.0, show_default=True, help="Target FPS for stream_frames")
-@click.option("--stream-seconds", default=5.0, show_default=True, help="Seconds to run stream_frames")
+@click.option(
+    "--stream-rate", default=200.0, show_default=True, help="Target FPS for stream_frames"
+)
+@click.option(
+    "--stream-seconds", default=5.0, show_default=True, help="Seconds to run stream_frames"
+)
 @click.option("--stream-coalesced/--stream-chunked", default=True, show_default=True)
-@click.option("--progress-interval", default=1.0, show_default=True, help="Progress print interval (seconds)")
+@click.option(
+    "--stream-max-rate/--no-stream-max-rate",
+    default=False,
+    show_default=True,
+    help="Include a max-throughput (no pacing) streaming test. Requires --stream-path.",
+)
+@click.option(
+    "--stream-max-rate-seconds",
+    default=5.0,
+    show_default=True,
+    help="Seconds to run max-rate stream",
+)
+@click.option(
+    "--stream-max-rate-coalesced/--stream-max-rate-chunked", default=True, show_default=True
+)
+@click.option(
+    "--progress-interval", default=1.0, show_default=True, help="Progress print interval (seconds)"
+)
 @click.option(
     "--io-timeout",
     default=BENCH_IO_TIMEOUT_S,
@@ -313,6 +371,9 @@ def bench(
     stream_rate: float,
     stream_seconds: float,
     stream_coalesced: bool,
+    stream_max_rate: bool,
+    stream_max_rate_seconds: float,
+    stream_max_rate_coalesced: bool,
     progress_interval: float,
     io_timeout: float,
 ):
@@ -339,6 +400,9 @@ def bench(
         stream_rate=float(stream_rate),
         stream_seconds=float(stream_seconds),
         stream_coalesced=bool(stream_coalesced),
+        stream_max_rate=bool(stream_max_rate),
+        stream_max_rate_seconds=float(stream_max_rate_seconds),
+        stream_max_rate_coalesced=bool(stream_max_rate_coalesced),
         progress_interval_s=float(progress_interval),
         bench_io_timeout_s=float(io_timeout),
         status_callback=click.echo,

@@ -1,4 +1,5 @@
 """Python interface and CLI for the Reiser Lab ArenaController."""
+
 from __future__ import annotations
 
 import atexit
@@ -16,7 +17,8 @@ import subprocess
 import sys
 import time
 from contextlib import contextmanager
-from typing import Callable
+from dataclasses import dataclass
+from typing import Callable, cast
 
 try:
     import serial
@@ -48,6 +50,60 @@ CHUNK_SIZE = 4096
 StatusCallback = Callable[[str], None]
 
 
+@dataclass
+class CommandTimeouts:
+    """Per-command-category response timeouts.
+
+    Inspired by PanelsController.m's ``expectResponse(..., timeout)`` pattern
+    where each MATLAB command passes its own timeout value.  The defaults
+    below mirror the values chosen in the MATLAB implementation.
+
+    All values are in **seconds**.  A value of ``None`` means "use the
+    instance's transport-level default" (which itself may be ``None`` for
+    blocking-forever).
+
+    Attributes
+    ----------
+    fast_cmd_s:
+        Quick request/response commands: ``all_on``, ``display_reset``,
+        ``set_refresh_rate``, ``get_*``, ``update_pattern_frame``,
+        ``show_pattern_frame``, ``reset_perf_stats``, etc.
+        PanelsController.m uses 0.1 s for these.
+    slow_cmd_s:
+        Commands whose firmware-side processing takes noticeably longer:
+        ``all_off``, ``stop_display``.
+        PanelsController.m uses 0.3 s.
+    mode_switch_s:
+        Heavy mode changes such as ``switch_grayscale``.
+        PanelsController.m uses 2.0 s ("This takes very long").
+    stream_frame_s:
+        Timeout for a single ``STREAM_FRAME`` (0x32) round-trip inside the
+        ``stream_frames`` loop.  There is no direct MATLAB analog (the
+        ``streamFrame`` method is commented out) but 0.5 s gives comfortable
+        headroom at ≥200 Hz frame rates.
+    play_cmd_s:
+        Timeout for the *initial* ``play_pattern`` / ``play_pattern_analog_closed_loop``
+        command exchange (before the blocking wait for completion).
+        PanelsController.m uses 0.1–0.2 s for comparable initial acks.
+    """
+
+    fast_cmd_s: float | None = 0.1
+    slow_cmd_s: float | None = 0.3
+    mode_switch_s: float | None = 2.0
+    stream_frame_s: float | None = 0.5
+    play_cmd_s: float | None = 0.2
+
+
+class _Sentinel:
+    """Sentinel type used to distinguish 'caller did not pass timeout_s'
+    from 'caller explicitly passed None' (which means block indefinitely)."""
+
+    __slots__ = ()
+
+
+_SENTINEL: _Sentinel = _Sentinel()
+
+
 class ArenaInterface:
     """Python interface to the Reiser lab ArenaController."""
 
@@ -60,11 +116,24 @@ class ArenaInterface:
         keepalive: bool = True,
         socket_timeout_s: float | None = SOCKET_TIMEOUT,
         serial_timeout_s: float | None = SERIAL_TIMEOUT,
+        command_timeouts: CommandTimeouts | None = None,
     ):
-        """Initialize an ArenaInterface instance."""
+        """Initialize an ArenaInterface instance.
+
+        Parameters
+        ----------
+        command_timeouts:
+            Per-command-category response timeouts.  When ``None`` (the
+            default) a :class:`CommandTimeouts` with sensible defaults
+            (mirroring PanelsController.m) is created automatically.  Pass
+            an explicit instance to override individual categories, or pass
+            ``CommandTimeouts(fast_cmd_s=None, slow_cmd_s=None, ...)`` to
+            fall back to the transport-level ``socket_timeout_s`` for every
+            command.
+        """
         self._debug = bool(debug)
         self._serial = None
-        self._ethernet_ip_address = ''
+        self._ethernet_ip_address = ""
         self._ethernet_socket: socket.socket | None = None
         self._socket_reconnects: int = 0
         self._socket_last_error: str | None = None
@@ -76,6 +145,9 @@ class ArenaInterface:
         self._keepalive = bool(keepalive)
         self._socket_timeout_s = self._coerce_timeout(socket_timeout_s)
         self._serial_timeout_s = self._coerce_timeout(serial_timeout_s)
+        self.command_timeouts = (
+            command_timeouts if command_timeouts is not None else CommandTimeouts()
+        )
         atexit.register(self._exit)
 
     def __enter__(self):
@@ -183,7 +255,9 @@ class ArenaInterface:
         except Exception as exc:
             message = self._format_exception(exc)
             self._socket_last_error = message
-            self._bench_emit_status(status_callback, f"[bench] {context}: ALL_OFF failed: {message}")
+            self._bench_emit_status(
+                status_callback, f"[bench] {context}: ALL_OFF failed: {message}"
+            )
             self._close_ethernet_socket()
             return message
 
@@ -271,7 +345,6 @@ class ArenaInterface:
 
         raise last_exc if last_exc is not None else ConnectionRefusedError()
 
-
     def _recv_exact(self, ethernet_socket: socket.socket, n: int) -> bytes:
         """Receive exactly n bytes from a TCP socket or raise on EOF."""
         data = b""
@@ -296,7 +369,15 @@ class ArenaInterface:
         if len(data) != n:
             raise TimeoutError(f"serial read short: expected {n}, got {len(data)}")
         return data
-    def _send_and_receive(self, cmd, ethernet_socket=None, *, return_timings: bool = False):
+
+    def _send_and_receive(
+        self,
+        cmd,
+        ethernet_socket=None,
+        *,
+        return_timings: bool = False,
+        timeout_s: float | None | _Sentinel = _SENTINEL,
+    ):
         """Send a command and wait for a binary response.
 
         If no socket is provided and we're in Ethernet mode, this reuses a
@@ -308,43 +389,71 @@ class ArenaInterface:
             If True, return a tuple: (payload_bytes, send_ms, recv_ms), where
             send_ms is time spent in send/write calls and recv_ms is time spent
             waiting for and reading the response bytes.
+        timeout_s:
+            Per-call response timeout override.  When set, the socket (or
+            serial) timeout is temporarily changed for this exchange and
+            then restored.  ``None`` means "block indefinitely".  The
+            special internal sentinel (the default) means "use the
+            instance's transport-level default and do not touch the
+            timeout at all".
         """
+        use_per_call_timeout = not isinstance(timeout_s, _Sentinel)
+        _effective_timeout_s = cast("float | None", timeout_s) if use_per_call_timeout else None
+
         if self._serial:
-            t0 = time.perf_counter_ns()
-            if isinstance(cmd, str):
-                self._serial.write(cmd.encode())
-            else:
-                self._serial.write(cmd)
-            t1 = time.perf_counter_ns()
-            resp_len = self._serial.read(1)
-            if not resp_len:
-                raise TimeoutError("serial response length timed out")
-            response = resp_len + self._serial.read(int(resp_len[0]))
-            t2 = time.perf_counter_ns()
-            payload = response[3:]
-            if return_timings:
-                return payload, (t1 - t0) / 1e6, (t2 - t1) / 1e6
-            return payload
+            prev_serial_timeout = self._serial.timeout if use_per_call_timeout else None
+            if use_per_call_timeout:
+                self._serial.timeout = self._coerce_timeout(_effective_timeout_s)
+            try:
+                t0 = time.perf_counter_ns()
+                if isinstance(cmd, str):
+                    self._serial.write(cmd.encode())
+                else:
+                    self._serial.write(cmd)
+                t1 = time.perf_counter_ns()
+                resp_len = self._serial.read(1)
+                if not resp_len:
+                    raise TimeoutError("serial response length timed out")
+                response = resp_len + self._serial.read(int(resp_len[0]))
+                t2 = time.perf_counter_ns()
+                payload = response[3:]
+                if return_timings:
+                    return payload, (t1 - t0) / 1e6, (t2 - t1) / 1e6
+                return payload
+            finally:
+                if use_per_call_timeout:
+                    self._serial.timeout = prev_serial_timeout
 
         # Ethernet
-        sock = ethernet_socket if (ethernet_socket is not None) else self._connect_ethernet_socket(reuse=True)
+        sock = (
+            ethernet_socket
+            if (ethernet_socket is not None)
+            else self._connect_ethernet_socket(reuse=True)
+        )
 
         def _do_io(s: socket.socket):
-            t0 = time.perf_counter_ns()
-            if isinstance(cmd, str):
-                s.sendall(cmd.encode())
-            else:
-                s.sendall(cmd)
-            t1 = time.perf_counter_ns()
+            prev_sock_timeout = s.gettimeout() if use_per_call_timeout else None
+            if use_per_call_timeout:
+                s.settimeout(self._coerce_timeout(_effective_timeout_s))
+            try:
+                t0 = time.perf_counter_ns()
+                if isinstance(cmd, str):
+                    s.sendall(cmd.encode())
+                else:
+                    s.sendall(cmd)
+                t1 = time.perf_counter_ns()
 
-            resp_len = self._recv_exact(s, 1)
-            payload = self._recv_exact(s, int(resp_len[0]))
-            t2 = time.perf_counter_ns()
+                resp_len = self._recv_exact(s, 1)
+                payload = self._recv_exact(s, int(resp_len[0]))
+                t2 = time.perf_counter_ns()
 
-            out = (resp_len + payload)[3:]
-            if return_timings:
-                return out, (t1 - t0) / 1e6, (t2 - t1) / 1e6
-            return out
+                out = (resp_len + payload)[3:]
+                if return_timings:
+                    return out, (t1 - t0) / 1e6, (t2 - t1) / 1e6
+                return out
+            finally:
+                if use_per_call_timeout:
+                    s.settimeout(prev_sock_timeout)
 
         # If we're using the persistent socket, allow one reconnect attempt.
         attempts = 1 if (ethernet_socket is not None) else 2
@@ -361,13 +470,15 @@ class ArenaInterface:
                 sock = self._connect_ethernet_socket(reuse=True)
 
         raise ConnectionError("failed to send/receive over Ethernet after reconnect")
+
     def _send_and_receive_stream(
-            self,
-            stream_header: bytes,
-            frame_chunked: list[bytes],
-            ethernet_socket: socket.socket | None = None,
-            *,
-            return_timings: bool = False,
+        self,
+        stream_header: bytes,
+        frame_chunked: list[bytes],
+        ethernet_socket: socket.socket | None = None,
+        *,
+        return_timings: bool = False,
+        timeout_s: float | None | _Sentinel = _SENTINEL,
     ):
         """Send a stream frame (header + payload) and wait for response.
 
@@ -380,24 +491,39 @@ class ArenaInterface:
             instance's persistent Ethernet socket.
         return_timings:
             If True, return (payload_bytes, send_ms, recv_ms).
+        timeout_s:
+            Per-call response timeout override (see ``_send_and_receive``).
         """
-        sock = ethernet_socket if (ethernet_socket is not None) else self._connect_ethernet_socket(reuse=True)
+        use_per_call_timeout = not isinstance(timeout_s, _Sentinel)
+        _effective_timeout_s = cast("float | None", timeout_s) if use_per_call_timeout else None
+        sock = (
+            ethernet_socket
+            if (ethernet_socket is not None)
+            else self._connect_ethernet_socket(reuse=True)
+        )
 
         def _do_io(s: socket.socket):
-            t0 = time.perf_counter_ns()
-            s.sendall(stream_header)
-            for chunk in frame_chunked:
-                s.sendall(chunk)
-            t1 = time.perf_counter_ns()
+            prev_sock_timeout = s.gettimeout() if use_per_call_timeout else None
+            if use_per_call_timeout:
+                s.settimeout(self._coerce_timeout(_effective_timeout_s))
+            try:
+                t0 = time.perf_counter_ns()
+                s.sendall(stream_header)
+                for chunk in frame_chunked:
+                    s.sendall(chunk)
+                t1 = time.perf_counter_ns()
 
-            resp_len = self._recv_exact(s, 1)
-            payload = self._recv_exact(s, int(resp_len[0]))
-            t2 = time.perf_counter_ns()
+                resp_len = self._recv_exact(s, 1)
+                payload = self._recv_exact(s, int(resp_len[0]))
+                t2 = time.perf_counter_ns()
 
-            out = (resp_len + payload)[3:]
-            if return_timings:
-                return out, (t1 - t0) / 1e6, (t2 - t1) / 1e6
-            return out
+                out = (resp_len + payload)[3:]
+                if return_timings:
+                    return out, (t1 - t0) / 1e6, (t2 - t1) / 1e6
+                return out
+            finally:
+                if use_per_call_timeout:
+                    s.settimeout(prev_sock_timeout)
 
         # If we're using the persistent socket, allow one reconnect attempt.
         attempts = 1 if (ethernet_socket is not None) else 2
@@ -432,7 +558,7 @@ class ArenaInterface:
             )
 
         self._close_ethernet_socket()
-        self._ethernet_ip_address = ''
+        self._ethernet_ip_address = ""
         if self._serial:
             self._serial.close()
 
@@ -442,7 +568,6 @@ class ArenaInterface:
         self._serial.timeout = self._serial_timeout_s
         self._serial.open()
         return self._serial.is_open
-
 
     def _close_ethernet_socket(self):
         """Close and forget the persistent Ethernet socket (if any)."""
@@ -465,81 +590,91 @@ class ArenaInterface:
 
     def all_off(self):
         """Turn all panels off."""
-        self._send_and_receive(b'\x01\x00')
+        self._send_and_receive(b"\x01\x00", timeout_s=self.command_timeouts.slow_cmd_s)
 
     def display_reset(self):
         """Reset arena."""
-        self._send_and_receive(b'\x01\x01')
+        self._send_and_receive(b"\x01\x01", timeout_s=self.command_timeouts.fast_cmd_s)
 
     def switch_grayscale(self, grayscale_index):
         """Switches grayscale value. grayscale_index: 0=binary, 1=grayscale"""
-        cmd_bytes = struct.pack('<BBB', 0x02, 0x06, grayscale_index)
-        self._send_and_receive(cmd_bytes)
+        cmd_bytes = struct.pack("<BBB", 0x02, 0x06, grayscale_index)
+        self._send_and_receive(cmd_bytes, timeout_s=self.command_timeouts.mode_switch_s)
 
     def play_pattern(self, pattern_id, frame_rate, runtime_duration, initial_frame_index=0):
         """Play pattern with constant frame rate."""
         control_mode = 0x02
-        gain = 0x10 # dummy value
-        cmd_bytes = struct.pack('<BBBHhHhH',
-                                0x0c,
-                                0x08,
-                                control_mode,
-                                pattern_id,
-                                frame_rate,
-                                initial_frame_index,
-                                gain,
-                                runtime_duration)
+        gain = 0x10  # dummy value
+        cmd_bytes = struct.pack(
+            "<BBBHhHhH",
+            0x0C,
+            0x08,
+            control_mode,
+            pattern_id,
+            frame_rate,
+            initial_frame_index,
+            gain,
+            runtime_duration,
+        )
         runtime_duration_s = (runtime_duration * 1.0) / RUNTIME_DURATION_PER_SECOND
         runtime_duration_ms = int(runtime_duration_s * MILLISECONDS_PER_SECOND)
-        self._debug_print('runtime_duration_ms: ', runtime_duration_ms)
+        self._debug_print("runtime_duration_ms: ", runtime_duration_ms)
         ethernet_socket = self._connect_ethernet_socket()
-        self._send_and_receive(cmd_bytes, ethernet_socket)
+        self._send_and_receive(
+            cmd_bytes, ethernet_socket, timeout_s=self.command_timeouts.play_cmd_s
+        )
 
         while True:
-            self._debug_print('waiting for playing pattern end response...')
+            self._debug_print("waiting for playing pattern end response...")
             time.sleep(1)
             response = self._read(ethernet_socket, 1)
             if len(response) == 1:
                 response += self._read(ethernet_socket, int(response[0]))
                 break
-        self._debug_print('response: ', response)
+        self._debug_print("response: ", response)
 
-    def play_pattern_analog_closed_loop(self, pattern_id, gain, runtime_duration, initial_frame_index=0):
+    def play_pattern_analog_closed_loop(
+        self, pattern_id, gain, runtime_duration, initial_frame_index=0
+    ):
         """Play pattern with frame rate set by analog signal."""
         control_mode = 0x04
-        frame_rate = 0x00 # dummy value
-        cmd_bytes = struct.pack('<BBBHhHhH',
-                                0x0c,
-                                0x08,
-                                control_mode,
-                                pattern_id,
-                                frame_rate,
-                                initial_frame_index,
-                                gain,
-                                runtime_duration)
+        frame_rate = 0x00  # dummy value
+        cmd_bytes = struct.pack(
+            "<BBBHhHhH",
+            0x0C,
+            0x08,
+            control_mode,
+            pattern_id,
+            frame_rate,
+            initial_frame_index,
+            gain,
+            runtime_duration,
+        )
         runtime_duration_s = (runtime_duration * 1.0) / RUNTIME_DURATION_PER_SECOND
         runtime_duration_ms = int(runtime_duration_s * MILLISECONDS_PER_SECOND)
-        self._debug_print('runtime_duration_ms: ', runtime_duration_ms)
+        self._debug_print("runtime_duration_ms: ", runtime_duration_ms)
         ethernet_socket = self._connect_ethernet_socket()
-        self._send_and_receive(cmd_bytes, ethernet_socket)
+        self._send_and_receive(
+            cmd_bytes, ethernet_socket, timeout_s=self.command_timeouts.play_cmd_s
+        )
 
         while True:
-            self._debug_print('waiting for playing pattern end response...')
+            self._debug_print("waiting for playing pattern end response...")
             time.sleep(1)
             response = self._read(ethernet_socket, 1)
             if len(response) == 1:
                 response += self._read(ethernet_socket, int(response[0]))
                 break
-        self._debug_print('response: ', response)
+        self._debug_print("response: ", response)
 
     def show_pattern_frame(
-            self,
-            pattern_id,
-            frame_index,
-            frame_rate: int = 0,
-            runtime_duration: int = 0,
-            gain: int = 0x10,
-            ethernet_socket=None,
+        self,
+        pattern_id,
+        frame_index,
+        frame_rate: int = 0,
+        runtime_duration: int = 0,
+        gain: int = 0x10,
+        ethernet_socket=None,
     ):
         """Show pattern frame.
 
@@ -557,46 +692,57 @@ class ArenaInterface:
             Use 0 for "run until interrupted".
         """
         control_mode = 0x03
-        cmd_bytes = struct.pack('<BBBHhHhH',
-                                0x0c,
-                                0x08,
-                                control_mode,
-                                pattern_id,
-                                frame_rate,
-                                frame_index,
-                                gain,
-                                runtime_duration)
-        self._send_and_receive(cmd_bytes, ethernet_socket)
+        cmd_bytes = struct.pack(
+            "<BBBHhHhH",
+            0x0C,
+            0x08,
+            control_mode,
+            pattern_id,
+            frame_rate,
+            frame_index,
+            gain,
+            runtime_duration,
+        )
+        self._send_and_receive(
+            cmd_bytes, ethernet_socket, timeout_s=self.command_timeouts.fast_cmd_s
+        )
 
     def update_pattern_frame(self, frame_index, ethernet_socket=None):
         """Update pattern frame."""
-        cmd_bytes = struct.pack('<BBH',
-                                0x03,
-                                0x70,
-                                frame_index)
-        self._send_and_receive(cmd_bytes, ethernet_socket)
+        cmd_bytes = struct.pack("<BBH", 0x03, 0x70, frame_index)
+        self._send_and_receive(
+            cmd_bytes, ethernet_socket, timeout_s=self.command_timeouts.fast_cmd_s
+        )
 
-    def profile_stream_pattern_frame_indicies(self, pattern_id, frame_index_min, frame_index_max, frame_rate, runtime_duration):
+    def profile_stream_pattern_frame_indicies(
+        self, pattern_id, frame_index_min, frame_index_max, frame_rate, runtime_duration
+    ):
         """Profile stream frame indicies in a loop at some rate for some duration."""
         # Profile the execution of another_function
         profiler = cProfile.Profile()
         profiler.enable()
-        self.stream_pattern_frame_indicies(pattern_id, frame_index_min, frame_index_max, frame_rate, runtime_duration)
+        self.stream_pattern_frame_indicies(
+            pattern_id, frame_index_min, frame_index_max, frame_rate, runtime_duration
+        )
         profiler.disable()
 
         # Create a Stats object and print the report
         stats = pstats.Stats(profiler)
-        stats.sort_stats('tottime') # Sort by total time spent in a function (excluding calls to sub-functions)
+        stats.sort_stats(
+            "tottime"
+        )  # Sort by total time spent in a function (excluding calls to sub-functions)
         stats.print_stats()
 
-    def stream_pattern_frame_indicies(self, pattern_id, frame_index_min, frame_index_max, frame_rate, runtime_duration):
+    def stream_pattern_frame_indicies(
+        self, pattern_id, frame_index_min, frame_index_max, frame_rate, runtime_duration
+    ):
         """Stream frame indicies in a loop at some rate for some duration."""
-        self._debug_print('frame_rate: ', frame_rate)
+        self._debug_print("frame_rate: ", frame_rate)
         if frame_rate != 0:
             frame_period_ns = int(NANOSECONDS_PER_SECOND / frame_rate)
         runtime_duration_ns = int(NANOSECONDS_PER_RUNTIME_DURATION * runtime_duration)
-        self._debug_print('frame_period_ns: ', frame_period_ns)
-        self._debug_print('runtime_duration_ns: ', runtime_duration_ns)
+        self._debug_print("frame_period_ns: ", frame_period_ns)
+        self._debug_print("runtime_duration_ns: ", runtime_duration_ns)
         frames_displayed_count = 0
         frames_to_display_count = int((frame_rate * runtime_duration) / RUNTIME_DURATION_PER_SECOND)
         ethernet_socket = self._connect_ethernet_socket()
@@ -604,57 +750,69 @@ class ArenaInterface:
         stream_frames_start_time = time.time_ns()
         while frames_displayed_count < frames_to_display_count:
             pattern_start_time = time.time_ns()
-            for frame_index in range(frame_index_min, frame_index_max+1):
+            for frame_index in range(frame_index_min, frame_index_max + 1):
                 self.update_pattern_frame(frame_index, ethernet_socket)
-                frames_displayed_count= frames_displayed_count + 1
-                seconds_elapsed = int((time.time_ns() - stream_frames_start_time) / NANOSECONDS_PER_SECOND)
-                self._debug_print('frames streamed: ', frames_displayed_count, ':', frames_to_display_count, seconds_elapsed)
+                frames_displayed_count = frames_displayed_count + 1
+                seconds_elapsed = int(
+                    (time.time_ns() - stream_frames_start_time) / NANOSECONDS_PER_SECOND
+                )
+                self._debug_print(
+                    "frames streamed: ",
+                    frames_displayed_count,
+                    ":",
+                    frames_to_display_count,
+                    seconds_elapsed,
+                )
                 while (time.time_ns() - pattern_start_time) < ((frame_index + 1) * frame_period_ns):
                     pass
         stream_frames_stop_time = time.time_ns()
         duration_s = (stream_frames_stop_time - stream_frames_start_time) / NANOSECONDS_PER_SECOND
-        print('stream frames duration:', duration_s)
+        print("stream frames duration:", duration_s)
         frame_rate_actual = frames_displayed_count / duration_s
-        print('frame rate requested: ', frame_rate, ', frame rate actual:', frame_rate_actual)
+        print("frame rate requested: ", frame_rate, ", frame rate actual:", frame_rate_actual)
         self.all_off()
 
     def set_refresh_rate(self, refresh_rate):
         """Set refresh rate in Hz."""
-        cmd_bytes = struct.pack('<BBH', 0x03, 0x16, refresh_rate)
-        self._send_and_receive(cmd_bytes)
+        cmd_bytes = struct.pack("<BBH", 0x03, 0x16, refresh_rate)
+        self._send_and_receive(cmd_bytes, timeout_s=self.command_timeouts.fast_cmd_s)
 
     def get_ethernet_ip_address(self):
         """Get Ethernet IP address."""
-        return self._send_and_receive(b'\x01\x66')
+        return self._send_and_receive(b"\x01\x66", timeout_s=self.command_timeouts.fast_cmd_s)
 
     def get_perf_stats(self, ethernet_socket=None) -> bytes:
         """Fetch a raw performance stats snapshot (binary payload)."""
-        return self._send_and_receive(b'\x01\x71', ethernet_socket)
+        return self._send_and_receive(
+            b"\x01\x71", ethernet_socket, timeout_s=self.command_timeouts.fast_cmd_s
+        )
 
     def reset_perf_stats(self, ethernet_socket=None):
         """Reset performance counters on the device."""
-        self._send_and_receive(b'\x01\x72', ethernet_socket)
+        self._send_and_receive(
+            b"\x01\x72", ethernet_socket, timeout_s=self.command_timeouts.fast_cmd_s
+        )
 
     def all_on(self):
         """Turn all panels on."""
-        self._send_and_receive(b'\x01\xff')
+        self._send_and_receive(b"\x01\xff", timeout_s=self.command_timeouts.fast_cmd_s)
 
     def stream_frame(self, path, frame_index, analog_output_value=0):
         """Stream frame in pattern file."""
-        self._debug_print('pattern path: ', path)
-        with open(path, mode='rb') as f:
+        self._debug_print("pattern path: ", path)
+        with open(path, mode="rb") as f:
             content = f.read()
-            pattern_header = struct.unpack('<HHBBB', content[:PATTERN_HEADER_SIZE])
-            self._debug_print('pattern header: ', pattern_header)
+            pattern_header = struct.unpack("<HHBBB", content[:PATTERN_HEADER_SIZE])
+            self._debug_print("pattern header: ", pattern_header)
             frames = content[PATTERN_HEADER_SIZE:]
             frame_count = pattern_header[0] * pattern_header[1]
-            self._debug_print('frame_count: ', frame_count)
+            self._debug_print("frame_count: ", frame_count)
             if frame_index < 0:
                 frame_index = 0
             if frame_index > (frame_count - 1):
                 frame_index = frame_count - 1
-            self._debug_print('frame_index: ', frame_index)
-            frame_len = len(frames)//frame_count
+            self._debug_print("frame_index: ", frame_index)
+            frame_len = len(frames) // frame_count
             frame_start = frame_index * frame_len
             # self._debug_print('frame_start: ', frame_start)
             frame_end = frame_start + frame_len
@@ -662,12 +820,12 @@ class ArenaInterface:
             frame = frames[frame_start:frame_end]
             data_len = len(frame)
             # self._debug_print('data_len: ', data_len)
-            frame_header = struct.pack('<BHHH', 0x32, data_len, analog_output_value,  0)
-            self._debug_print('frame header: ', frame_header)
+            frame_header = struct.pack("<BHHH", 0x32, data_len, analog_output_value, 0)
+            self._debug_print("frame header: ", frame_header)
             message = frame_header + frame
-            self._debug_print('len(message): ', len(message))
+            self._debug_print("len(message): ", len(message))
             # self._debug_print('message: ', message)
-            self._send_and_receive(message)
+            self._send_and_receive(message, timeout_s=self.command_timeouts.stream_frame_s)
 
     def profile_stream_frames(self, path, frame_rate, runtime_duration):
         """Profile stream frames in pattern file at some frame rate for some duration."""
@@ -679,25 +837,30 @@ class ArenaInterface:
 
         # Create a Stats object and print the report
         stats = pstats.Stats(profiler)
-        stats.sort_stats('tottime') # Sort by total time spent in a function (excluding calls to sub-functions)
+        stats.sort_stats(
+            "tottime"
+        )  # Sort by total time spent in a function (excluding calls to sub-functions)
         stats.print_stats()
 
     def _map_frame_index_to_analog_value(self, frame_index, frame_count):
-        return int(ANALOG_OUTPUT_VALUE_MIN + (frame_index * (ANALOG_OUTPUT_VALUE_MAX - ANALOG_OUTPUT_VALUE_MIN)) / frame_count)
+        return int(
+            ANALOG_OUTPUT_VALUE_MIN
+            + (frame_index * (ANALOG_OUTPUT_VALUE_MAX - ANALOG_OUTPUT_VALUE_MIN)) / frame_count
+        )
 
     def stream_frames(
-            self,
-            pattern_path,
-            frame_rate,
-            runtime_duration,
-            analog_out_waveform,
-            analog_update_rate,
-            analog_frequency,
-            stream_cmd_coalesced=False,
-            progress_interval_s=1.0,
-            collect_timings: bool = False,
-            status_callback: StatusCallback | None = None,
-            stop_after: bool = True,
+        self,
+        pattern_path,
+        frame_rate,
+        runtime_duration,
+        analog_out_waveform,
+        analog_update_rate,
+        analog_frequency,
+        stream_cmd_coalesced=False,
+        progress_interval_s=1.0,
+        collect_timings: bool = False,
+        status_callback: StatusCallback | None = None,
+        stop_after: bool = True,
     ):
         """Stream a `.pattern` file's frames at a fixed rate for a fixed duration.
 
@@ -714,7 +877,7 @@ class ArenaInterface:
         dict
             Basic host-side throughput stats.
         """
-                # Read frames from either:
+        # Read frames from either:
         #   1) ".pattern" format: [uint32_le frame_size][frame0 bytes][frame1 bytes]...
         #   2) ".pat" format (as in ./patterns/*.pat): [<HHBBB header (7 bytes)>][frame bytes...]
         #
@@ -730,10 +893,14 @@ class ArenaInterface:
         # Try ".pattern"
         if file_size >= 4:
             frame_size = struct.unpack("<I", file_bytes[:4])[0]
-            if 0 < frame_size <= 65535 and (file_size - 4) > 0 and ((file_size - 4) % frame_size == 0):
+            if (
+                0 < frame_size <= 65535
+                and (file_size - 4) > 0
+                and ((file_size - 4) % frame_size == 0)
+            ):
                 num_frames = int((file_size - 4) / frame_size)
                 frames = [
-                    file_bytes[4 + (i * frame_size): 4 + ((i + 1) * frame_size)]
+                    file_bytes[4 + (i * frame_size) : 4 + ((i + 1) * frame_size)]
                     for i in range(num_frames)
                 ]
 
@@ -759,30 +926,35 @@ class ArenaInterface:
                 )
 
             num_frames = int(frame_count)
-            frames = [blob[i * frame_size:(i + 1) * frame_size] for i in range(num_frames)]
+            frames = [blob[i * frame_size : (i + 1) * frame_size] for i in range(num_frames)]
 
         runtime_duration_s = float(runtime_duration) / float(RUNTIME_DURATION_PER_SECOND)
         frames_target = int(runtime_duration_s * float(frame_rate)) if frame_rate else 0
         frame_period_ns = int((1.0 / float(frame_rate)) * 1e9) if frame_rate else 0
 
-        analog_update_period_ns = int((1.0 / float(analog_update_rate)) * 1e9) if analog_update_rate else 0
+        analog_update_period_ns = (
+            int((1.0 / float(analog_update_rate)) * 1e9) if analog_update_rate else 0
+        )
 
         # Map waveform output [-1..1] into a conservative 12-bit-ish range.
         analog_amplitude = (ANALOG_OUTPUT_VALUE_MAX - ANALOG_OUTPUT_VALUE_MIN) / 2.0
         analog_offset = (ANALOG_OUTPUT_VALUE_MAX + ANALOG_OUTPUT_VALUE_MIN) / 2.0
 
         def analog_waveform_for(name: str):
-            if name == 'sin':
+            if name == "sin":
                 return math.sin
-            if name == 'square':
+            if name == "square":
                 return lambda x: 1.0 if math.sin(x) >= 0 else -1.0
-            if name == 'sawtooth':
+            if name == "sawtooth":
                 return lambda x: 2.0 * (x / (2.0 * math.pi) - math.floor(0.5 + x / (2.0 * math.pi)))
-            if name == 'triangle':
-                return lambda x: 2.0 * abs(2.0 * (x / (2.0 * math.pi) - math.floor(0.5 + x / (2.0 * math.pi)))) - 1.0
-            if name == 'constant':
+            if name == "triangle":
+                return lambda x: (
+                    2.0 * abs(2.0 * (x / (2.0 * math.pi) - math.floor(0.5 + x / (2.0 * math.pi))))
+                    - 1.0
+                )
+            if name == "constant":
                 return lambda x: 0.0
-            raise ValueError(f'Invalid analog output waveform: {name}')
+            raise ValueError(f"Invalid analog output waveform: {name}")
 
         # Ensure persistent socket is established once for the run.
         self._connect_ethernet_socket(reuse=True)
@@ -837,7 +1009,10 @@ class ArenaInterface:
 
             # Analog output update (optional)
             now_ns = time.perf_counter_ns()
-            if analog_update_period_ns and (now_ns - last_analog_update_ns) >= analog_update_period_ns:
+            if (
+                analog_update_period_ns
+                and (now_ns - last_analog_update_ns) >= analog_update_period_ns
+            ):
                 t_s = (now_ns - start_time_ns) / 1e9
                 analog_phase = (t_s * float(analog_frequency)) * (2.0 * math.pi)
                 analog_output_value_f = analog_amplitude * float(wf(analog_phase)) + analog_offset
@@ -853,33 +1028,44 @@ class ArenaInterface:
 
             # Stream frame header: cmd(0x32), data_len(uint16), analog(uint16), reserved(uint16)
             data_len = len(frame)
-            stream_header = struct.pack('<BHHH', 0x32, data_len, analog_output_value, 0)
+            stream_header = struct.pack("<BHHH", 0x32, data_len, analog_output_value, 0)
 
             if stream_cmd_coalesced:
                 if collect_timings:
-                    _, send_ms, recv_ms = self._send_and_receive(stream_header + frame, return_timings=True)
-                    send_ms_samples.append(float(send_ms))
-                    resp_wait_ms_samples.append(float(recv_ms))
-                    cmd_rtt_ms_samples.append(float(send_ms) + float(recv_ms))
-                else:
-                    self._send_and_receive(stream_header + frame)
-            else:
-                # Chunk the frame payload for better control over send sizes.
-                frame_chunked = [frame[i:i + CHUNK_SIZE] for i in range(0, len(frame), CHUNK_SIZE)]
-                if collect_timings:
-                    _, send_ms, recv_ms = self._send_and_receive_stream(
-                        stream_header,
-                        frame_chunked,
+                    _, send_ms, recv_ms = self._send_and_receive(
+                        stream_header + frame,
                         return_timings=True,
+                        timeout_s=self.command_timeouts.stream_frame_s,
                     )
                     send_ms_samples.append(float(send_ms))
                     resp_wait_ms_samples.append(float(recv_ms))
                     cmd_rtt_ms_samples.append(float(send_ms) + float(recv_ms))
                 else:
-                    self._send_and_receive_stream(stream_header, frame_chunked)
+                    self._send_and_receive(
+                        stream_header + frame, timeout_s=self.command_timeouts.stream_frame_s
+                    )
+            else:
+                # Chunk the frame payload for better control over send sizes.
+                frame_chunked = [
+                    frame[i : i + CHUNK_SIZE] for i in range(0, len(frame), CHUNK_SIZE)
+                ]
+                if collect_timings:
+                    _, send_ms, recv_ms = self._send_and_receive_stream(
+                        stream_header,
+                        frame_chunked,
+                        return_timings=True,
+                        timeout_s=self.command_timeouts.stream_frame_s,
+                    )
+                    send_ms_samples.append(float(send_ms))
+                    resp_wait_ms_samples.append(float(recv_ms))
+                    cmd_rtt_ms_samples.append(float(send_ms) + float(recv_ms))
+                else:
+                    self._send_and_receive_stream(
+                        stream_header, frame_chunked, timeout_s=self.command_timeouts.stream_frame_s
+                    )
 
             frames_streamed += 1
-            bytes_sent += (len(stream_header) + data_len)
+            bytes_sent += len(stream_header) + data_len
 
             # Progress (throttled)
             if next_progress_ns is not None:
@@ -888,21 +1074,30 @@ class ArenaInterface:
                     elapsed_s = (now_ns - start_time_ns) / 1e9
                     rate_hz = frames_streamed / elapsed_s if elapsed_s > 0 else 0.0
                     if frames_target:
-                        self._bench_emit_status(status_callback, f'[bench] stream_frames: {frames_streamed}/{frames_target} frames ({rate_hz:.1f} Hz)')
+                        self._bench_emit_status(
+                            status_callback,
+                            f"[bench] stream_frames: {frames_streamed}/{frames_target} frames ({rate_hz:.1f} Hz)",
+                        )
                     else:
-                        self._bench_emit_status(status_callback, f'[bench] stream_frames: {frames_streamed} frames ({rate_hz:.1f} Hz)')
+                        self._bench_emit_status(
+                            status_callback,
+                            f"[bench] stream_frames: {frames_streamed} frames ({rate_hz:.1f} Hz)",
+                        )
                     next_progress_ns += int(progress_interval_s * 1e9)
 
             if frame_period_ns:
                 next_frame_deadline_ns += frame_period_ns
             i += 1
         if stop_after:
-            self._send_and_receive(bytes([1, 0]))
+            self._send_and_receive(bytes([1, 0]), timeout_s=self.command_timeouts.slow_cmd_s)
 
         elapsed_s = (time.perf_counter_ns() - start_time_ns) / 1e9
         rate_hz = frames_streamed / elapsed_s if elapsed_s > 0 else 0.0
         mbps = (bytes_sent * 8) / (elapsed_s * 1e6) if elapsed_s > 0 else 0.0
-        self._bench_emit_status(status_callback, f'[bench] stream_frames: frames={frames_streamed} elapsed_s={elapsed_s:.3f} rate={rate_hz:.1f} Hz tx={mbps:.2f} Mb/s')
+        self._bench_emit_status(
+            status_callback,
+            f"[bench] stream_frames: frames={frames_streamed} elapsed_s={elapsed_s:.3f} rate={rate_hz:.1f} Hz tx={mbps:.2f} Mb/s",
+        )
 
         result = {
             "frames": frames_streamed,
@@ -926,11 +1121,11 @@ class ArenaInterface:
 
     def all_off_str(self):
         """Turn all panels off with string."""
-        self._send_and_receive('ALL_OFF')
+        self._send_and_receive("ALL_OFF", timeout_s=self.command_timeouts.slow_cmd_s)
 
     def all_on_str(self):
         """Turn all panels on with string."""
-        self._send_and_receive('ALL_ON')
+        self._send_and_receive("ALL_ON", timeout_s=self.command_timeouts.fast_cmd_s)
 
     # ---------------------------------------------------------------------
     # Benchmark helpers (host-side)
@@ -1034,7 +1229,9 @@ class ArenaInterface:
             "package_version": pkg_version,
             "transport": "serial" if (self._serial is not None) else "ethernet",
             "ethernet_ip": self._ethernet_ip_address if self._ethernet_ip_address else None,
-            "serial_port": getattr(self._serial, "port", None) if self._serial is not None else None,
+            "serial_port": getattr(self._serial, "port", None)
+            if self._serial is not None
+            else None,
             "tcp_nodelay": self._tcp_nodelay,
             "tcp_quickack_requested": self._tcp_quickack_requested,
             "tcp_quickack_supported": self._tcp_quickack_supported,
@@ -1059,7 +1256,9 @@ class ArenaInterface:
         peer_ip = meta.get("ethernet_ip")
         if peer_ip:
             try:
-                route_out = subprocess.check_output(["ip", "route", "get", str(peer_ip)], text=True).strip()
+                route_out = subprocess.check_output(
+                    ["ip", "route", "get", str(peer_ip)], text=True
+                ).strip()
                 meta["net_route_get"] = route_out
                 m = re.search(r"\bdev\s+(\S+)", route_out)
                 iface = m.group(1) if m else None
@@ -1105,7 +1304,6 @@ class ArenaInterface:
                 # Non-Linux hosts (or minimal containers) may not have `ip` or sysfs.
                 pass
 
-
         return meta
 
     def bench_connect_time(self, iters: int = 200) -> dict:
@@ -1140,13 +1338,13 @@ class ArenaInterface:
         return summary
 
     def bench_command_rtt(
-            self,
-            iters: int = 2000,
-            wrap_mode: bool = True,
-            connect_mode: str = "persistent",
-            warmup: int = 20,
-            progress_interval_s: float = 1.0,
-            status_callback: StatusCallback | None = None,
+        self,
+        iters: int = 2000,
+        wrap_mode: bool = True,
+        connect_mode: str = "persistent",
+        warmup: int = 20,
+        progress_interval_s: float = 1.0,
+        status_callback: StatusCallback | None = None,
     ) -> dict:
         """Measure host-side RTT for a small request/response command.
 
@@ -1179,7 +1377,9 @@ class ArenaInterface:
 
         reconnects_before = self.get_socket_reconnects(reset=False)
         cleanup_error: str | None = None
-        progress_step_ns = max(1, int(float(progress_interval_s) * 1e9)) if progress_interval_s > 0 else 0
+        progress_step_ns = (
+            max(1, int(float(progress_interval_s) * 1e9)) if progress_interval_s > 0 else 0
+        )
 
         try:
             if wrap_mode:
@@ -1203,9 +1403,7 @@ class ArenaInterface:
             bytes_rx = 0
             errors = 0
             measure_start_ns = time.perf_counter_ns()
-            next_progress_ns = (
-                measure_start_ns + progress_step_ns if progress_step_ns > 0 else None
-            )
+            next_progress_ns = measure_start_ns + progress_step_ns if progress_step_ns > 0 else None
 
             for iteration in range(int(iters)):
                 if connect_mode == "persistent":
@@ -1214,7 +1412,7 @@ class ArenaInterface:
                     t1 = time.perf_counter_ns()
                     rtts_ms.append((t1 - t0) / 1e6)
                     bytes_tx += 2  # b'q'
-                    bytes_rx += (len(payload) + 3)  # status + echo + payload (length excluded)
+                    bytes_rx += len(payload) + 3  # status + echo + payload (length excluded)
                 else:
                     s = self._open_ethernet_socket()
                     try:
@@ -1223,7 +1421,7 @@ class ArenaInterface:
                         t1 = time.perf_counter_ns()
                         rtts_ms.append((t1 - t0) / 1e6)
                         bytes_tx += 2
-                        bytes_rx += (len(payload) + 3)
+                        bytes_rx += len(payload) + 3
                     except Exception:
                         errors += 1
                     finally:
@@ -1270,16 +1468,16 @@ class ArenaInterface:
         return summary
 
     def bench_spf_updates(
-            self,
-            rate_hz: float = 200.0,
-            seconds: float = 5.0,
-            pattern_id: int = 10,
-            frame_min: int = 0,
-            frame_max: int = 1000,
-            pacing: str = "target",
-            warmup: int = 0,
-            progress_interval_s: float = 1.0,
-            status_callback: StatusCallback | None = None,
+        self,
+        rate_hz: float = 200.0,
+        seconds: float = 5.0,
+        pattern_id: int = 10,
+        frame_min: int = 0,
+        frame_max: int = 1000,
+        pacing: str = "target",
+        warmup: int = 0,
+        progress_interval_s: float = 1.0,
+        status_callback: StatusCallback | None = None,
     ) -> dict:
         """Benchmark SHOW_PATTERN_FRAME update performance (SPF).
 
@@ -1305,7 +1503,9 @@ class ArenaInterface:
 
         reconnects_before = self.get_socket_reconnects(reset=False)
         cleanup_error: str | None = None
-        progress_step_ns = max(1, int(float(progress_interval_s) * 1e9)) if progress_interval_s > 0 else 0
+        progress_step_ns = (
+            max(1, int(float(progress_interval_s) * 1e9)) if progress_interval_s > 0 else 0
+        )
 
         try:
             self.reset_perf_stats()
@@ -1423,17 +1623,17 @@ class ArenaInterface:
         return summary
 
     def bench_stream_frames(
-            self,
-            pattern_path: str,
-            frame_rate: float = 200.0,
-            seconds: float = 5.0,
-            stream_cmd_coalesced: bool = True,
-            progress_interval_s: float = 1.0,
-            analog_out_waveform: str = "constant",
-            analog_update_rate: float = 1.0,
-            analog_frequency: float = 0.0,
-            collect_timings: bool = True,
-            status_callback: StatusCallback | None = None,
+        self,
+        pattern_path: str,
+        frame_rate: float = 200.0,
+        seconds: float = 5.0,
+        stream_cmd_coalesced: bool = True,
+        progress_interval_s: float = 1.0,
+        analog_out_waveform: str = "constant",
+        analog_update_rate: float = 1.0,
+        analog_frequency: float = 0.0,
+        collect_timings: bool = True,
+        status_callback: StatusCallback | None = None,
     ) -> dict:
         """Benchmark STREAM_FRAME throughput using `stream_frames()`.
 
@@ -1488,27 +1688,120 @@ class ArenaInterface:
 
         return stats
 
+    def bench_stream_frames_max_rate(
+        self,
+        pattern_path: str,
+        seconds: float = 5.0,
+        stream_cmd_coalesced: bool = True,
+        progress_interval_s: float = 1.0,
+        collect_timings: bool = True,
+        status_callback: StatusCallback | None = None,
+    ) -> dict:
+        """Benchmark STREAM_FRAME throughput with no pacing (as fast as possible).
+
+        This is identical to :meth:`bench_stream_frames` but forces
+        ``frame_rate=0`` so frames are sent back-to-back with no sleep/spin
+        pacing.  The achieved rate is therefore bounded only by the host TCP
+        stack, the network, and the firmware's ability to accept and process
+        frames.
+
+        Use this to find the **maximum sustainable throughput** of a given
+        pattern size across firmware builds, Ethernet stacks, switches, and
+        host machines.
+
+        Parameters
+        ----------
+        pattern_path:
+            Path to a ``.pattern`` or ``.pat`` file (same formats as
+            :meth:`stream_frames`).
+        seconds:
+            Wall-clock duration of the streaming burst.
+        stream_cmd_coalesced:
+            If True, send the stream header and frame payload in a single
+            ``sendall``; otherwise chunk the payload.
+        progress_interval_s:
+            How often to emit progress via *status_callback*.
+        collect_timings:
+            If True, record per-frame send/recv timing breakdowns.
+        status_callback:
+            Optional callable for progress/status messages.
+
+        Returns
+        -------
+        dict
+            The same structure as :meth:`bench_stream_frames` with an extra
+            ``"pacing": "max"`` key so results are easy to distinguish from
+            rate-limited runs.
+        """
+        # Clear any prior socket error so results are per-run.
+        self._socket_last_error = None
+
+        reconnects_before = self.get_socket_reconnects(reset=False)
+        cleanup_error: str | None = None
+
+        try:
+            self.reset_perf_stats()
+
+            runtime_duration = int(round(float(seconds) * float(RUNTIME_DURATION_PER_SECOND)))
+            stats = self.stream_frames(
+                str(pattern_path),
+                0,  # frame_rate=0 → no pacing, send as fast as possible
+                runtime_duration,
+                "constant",  # analog waveform irrelevant at max rate
+                0,  # analog_update_rate=0 → disabled
+                0.0,  # analog_frequency
+                stream_cmd_coalesced=bool(stream_cmd_coalesced),
+                progress_interval_s=float(progress_interval_s),
+                collect_timings=bool(collect_timings),
+                status_callback=status_callback,
+                stop_after=False,
+            )
+            stats.update(
+                {
+                    "pacing": "max",
+                    "pattern_path": str(pattern_path),
+                    "frame_rate": 0,
+                    "seconds": float(seconds),
+                    "stream_cmd_coalesced": bool(stream_cmd_coalesced),
+                    "reconnects": int(self.get_socket_reconnects(reset=False) - reconnects_before),
+                    "last_socket_error": self._socket_last_error,
+                }
+            )
+        finally:
+            cleanup_error = self._safe_all_off(
+                status_callback=status_callback,
+                context="stream_frames_max_rate cleanup",
+            )
+
+        if cleanup_error is not None:
+            raise RuntimeError(f"stream_frames_max_rate cleanup failed: {cleanup_error}")
+
+        return stats
+
     def bench_suite(
-            self,
-            label: str | None = None,
-            *,
-            include_connect: bool = False,
-            connect_iters: int = 200,
-            cmd_iters: int = 2000,
-            cmd_connect_mode: str = "persistent",
-            spf_rate: float = 200.0,
-            spf_seconds: float = 5.0,
-            spf_pattern_id: int = 10,
-            spf_frame_min: int = 0,
-            spf_frame_max: int = 1000,
-            spf_pacing: str = "target",
-            stream_path: str | None = None,
-            stream_rate: float = 200.0,
-            stream_seconds: float = 5.0,
-            stream_coalesced: bool = True,
-            progress_interval_s: float = 1.0,
-            bench_io_timeout_s: float | None = BENCH_IO_TIMEOUT_S,
-            status_callback: StatusCallback | None = None,
+        self,
+        label: str | None = None,
+        *,
+        include_connect: bool = False,
+        connect_iters: int = 200,
+        cmd_iters: int = 2000,
+        cmd_connect_mode: str = "persistent",
+        spf_rate: float = 200.0,
+        spf_seconds: float = 5.0,
+        spf_pattern_id: int = 10,
+        spf_frame_min: int = 0,
+        spf_frame_max: int = 1000,
+        spf_pacing: str = "target",
+        stream_path: str | None = None,
+        stream_rate: float = 200.0,
+        stream_seconds: float = 5.0,
+        stream_coalesced: bool = True,
+        stream_max_rate: bool = False,
+        stream_max_rate_seconds: float = 5.0,
+        stream_max_rate_coalesced: bool = True,
+        progress_interval_s: float = 1.0,
+        bench_io_timeout_s: float | None = BENCH_IO_TIMEOUT_S,
+        status_callback: StatusCallback | None = None,
     ) -> dict:
         """Run a repeatable benchmark suite and return structured results.
 
@@ -1630,6 +1923,21 @@ class ArenaInterface:
                 stream_cmd_coalesced=bool(stream_coalesced),
                 progress_interval_s=float(progress_interval_s),
                 status_callback=status_callback,
+            ):
+                return self._bench_finalize_suite_results(results)
+
+            if (
+                stream_path
+                and stream_max_rate
+                and not run_phase(
+                    "stream_frames_max_rate",
+                    self.bench_stream_frames_max_rate,
+                    pattern_path=str(stream_path),
+                    seconds=float(stream_max_rate_seconds),
+                    stream_cmd_coalesced=bool(stream_max_rate_coalesced),
+                    progress_interval_s=float(progress_interval_s),
+                    status_callback=status_callback,
+                )
             ):
                 return self._bench_finalize_suite_results(results)
 

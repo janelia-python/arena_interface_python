@@ -83,6 +83,9 @@ platforms = ["linux-64", "osx-64", "osx-arm64", "win-64"]
 
 [tool.pixi.dependencies]
 git = "*"
+pyserial = ">=3.5,<4"
+click = ">=8.3.1,<9"
+schedule = ">=1.2.2,<2"
 
 [tool.pixi.pypi-dependencies]
 "arena-interface" = { path = ".", editable = true }
@@ -107,6 +110,8 @@ qtools-install = "python tools/quantum_leaps_tools.py qtools-install"
 qspy = "python tools/quantum_leaps_tools.py qspy"
 bench = "arena-interface bench"
 bench-full = "arena-interface bench --stream-path patterns/pat0004.pat"
+bench-max-rate = "arena-interface bench --stream-path patterns/pat0004.pat --stream-max-rate"
+bench-max-rate-smoke = "arena-interface bench --cmd-iters 250 --spf-seconds 2 --stream-path patterns/pat0004.pat --stream-seconds 2 --stream-max-rate --stream-max-rate-seconds 2"
 bench-smoke = "arena-interface bench --cmd-iters 250 --spf-seconds 2 --stream-path patterns/pat0004.pat --stream-seconds 2"
 bench-persistent = "arena-interface bench --cmd-connect-mode persistent"
 bench-new-connection = "arena-interface bench --cmd-connect-mode new_connection"

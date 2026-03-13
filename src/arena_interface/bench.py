@@ -7,6 +7,7 @@ Use the instance methods on :class:`arena_interface.ArenaInterface`:
 - ``ai.bench_command_rtt(...)``
 - ``ai.bench_spf_updates(...)``
 - ``ai.bench_stream_frames(...)``
+- ``ai.bench_stream_frames_max_rate(...)``
 - ``ai.bench_suite(...)``
 
 This module keeps thin wrapper functions for backwards compatibility and for
@@ -25,11 +26,11 @@ def bench_connect_time(arena_interface: ArenaInterface, iters: int = 200) -> dic
 
 
 def bench_command_rtt(
-        arena_interface: ArenaInterface,
-        iters: int = 2000,
-        wrap_mode: bool = True,
-        connect_mode: str = "persistent",
-        warmup: int = 20,
+    arena_interface: ArenaInterface,
+    iters: int = 2000,
+    wrap_mode: bool = True,
+    connect_mode: str = "persistent",
+    warmup: int = 20,
 ) -> dict[str, Any]:
     return arena_interface.bench_command_rtt(
         iters=int(iters),
@@ -40,14 +41,14 @@ def bench_command_rtt(
 
 
 def bench_spf_updates(
-        arena_interface: ArenaInterface,
-        rate_hz: float = 200.0,
-        seconds: float = 5.0,
-        pattern_id: int = 10,
-        frame_min: int = 0,
-        frame_max: int = 1000,
-        pacing: str = "target",
-        warmup: int = 0,
+    arena_interface: ArenaInterface,
+    rate_hz: float = 200.0,
+    seconds: float = 5.0,
+    pattern_id: int = 10,
+    frame_min: int = 0,
+    frame_max: int = 1000,
+    pacing: str = "target",
+    warmup: int = 0,
 ) -> dict[str, Any]:
     return arena_interface.bench_spf_updates(
         rate_hz=float(rate_hz),
@@ -61,16 +62,16 @@ def bench_spf_updates(
 
 
 def bench_stream_frames(
-        arena_interface: ArenaInterface,
-        pattern_path: str,
-        frame_rate: float = 200.0,
-        seconds: float = 5.0,
-        stream_cmd_coalesced: bool = True,
-        progress_interval_s: float = 1.0,
-        analog_out_waveform: str = "constant",
-        analog_update_rate: float = 1.0,
-        analog_frequency: float = 0.0,
-        collect_timings: bool = True,
+    arena_interface: ArenaInterface,
+    pattern_path: str,
+    frame_rate: float = 200.0,
+    seconds: float = 5.0,
+    stream_cmd_coalesced: bool = True,
+    progress_interval_s: float = 1.0,
+    analog_out_waveform: str = "constant",
+    analog_update_rate: float = 1.0,
+    analog_frequency: float = 0.0,
+    collect_timings: bool = True,
 ) -> dict[str, Any]:
     return arena_interface.bench_stream_frames(
         pattern_path=str(pattern_path),
@@ -85,25 +86,46 @@ def bench_stream_frames(
     )
 
 
+def bench_stream_frames_max_rate(
+    arena_interface: ArenaInterface,
+    pattern_path: str,
+    seconds: float = 5.0,
+    stream_cmd_coalesced: bool = True,
+    progress_interval_s: float = 1.0,
+    collect_timings: bool = True,
+) -> dict[str, Any]:
+    """Thin wrapper around :meth:`ArenaInterface.bench_stream_frames_max_rate`."""
+    return arena_interface.bench_stream_frames_max_rate(
+        pattern_path=str(pattern_path),
+        seconds=float(seconds),
+        stream_cmd_coalesced=bool(stream_cmd_coalesced),
+        progress_interval_s=float(progress_interval_s),
+        collect_timings=bool(collect_timings),
+    )
+
+
 def bench_suite(
-        arena_interface: ArenaInterface,
-        label: str | None = None,
-        *,
-        include_connect: bool = False,
-        connect_iters: int = 200,
-        cmd_iters: int = 2000,
-        cmd_connect_mode: str = "persistent",
-        spf_rate: float = 200.0,
-        spf_seconds: float = 5.0,
-        spf_pattern_id: int = 10,
-        spf_frame_min: int = 0,
-        spf_frame_max: int = 1000,
-        spf_pacing: str = "target",
-        stream_path: str | None = None,
-        stream_rate: float = 200.0,
-        stream_seconds: float = 5.0,
-        stream_coalesced: bool = True,
-        progress_interval_s: float = 1.0,
+    arena_interface: ArenaInterface,
+    label: str | None = None,
+    *,
+    include_connect: bool = False,
+    connect_iters: int = 200,
+    cmd_iters: int = 2000,
+    cmd_connect_mode: str = "persistent",
+    spf_rate: float = 200.0,
+    spf_seconds: float = 5.0,
+    spf_pattern_id: int = 10,
+    spf_frame_min: int = 0,
+    spf_frame_max: int = 1000,
+    spf_pacing: str = "target",
+    stream_path: str | None = None,
+    stream_rate: float = 200.0,
+    stream_seconds: float = 5.0,
+    stream_coalesced: bool = True,
+    stream_max_rate: bool = False,
+    stream_max_rate_seconds: float = 5.0,
+    stream_max_rate_coalesced: bool = True,
+    progress_interval_s: float = 1.0,
 ) -> dict[str, Any]:
     return arena_interface.bench_suite(
         label=label,
@@ -121,6 +143,9 @@ def bench_suite(
         stream_rate=float(stream_rate),
         stream_seconds=float(stream_seconds),
         stream_coalesced=bool(stream_coalesced),
+        stream_max_rate=bool(stream_max_rate),
+        stream_max_rate_seconds=float(stream_max_rate_seconds),
+        stream_max_rate_coalesced=bool(stream_max_rate_coalesced),
         progress_interval_s=float(progress_interval_s),
     )
 

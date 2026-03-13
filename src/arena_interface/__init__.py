@@ -9,10 +9,11 @@ from .__about__ import (
     __url__,
     __version__,
 )
-from .arena_interface import ArenaInterface
+from .arena_interface import ArenaInterface, CommandTimeouts
 
 __all__ = [
     "ArenaInterface",
+    "CommandTimeouts",
     "__author__",
     "__copyright__",
     "__description__",
