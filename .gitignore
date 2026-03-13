@@ -210,6 +210,9 @@ flycheck_*.el
 # Pixi
 .pixi/
 
+# Quantum Leaps host tools downloaded by pixi tasks
+.tools/
+
 # Ruff
 .ruff_cache/
 

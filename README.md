@@ -14,6 +14,7 @@ layout.
 
 - `src/arena_interface/`: importable package and CLI
 - `scripts/`: developer helper scripts, including benchmark matrix helpers
+- `tools/`: repository-local helper tools such as the QSPY/QTools wrapper
 - `tests/`: lightweight smoke tests that do not require hardware
 - `patterns/`: small example pattern files for streaming tests
 - `pyproject.toml`: packaging metadata, tool configuration, and Pixi manifest
@@ -245,7 +246,7 @@ still customize labels, durations, rates, and pattern paths.
 Examples:
 
 ```sh
-pixi run bench -- --json-out host_only.jsonl
+pixi run bench --json-out host_only.jsonl
 pixi run bench-full --json-out host_plus_stream.jsonl
 pixi run bench-full --stream-rate 250 --stream-seconds 8 --json-out stream_250hz.jsonl
 pixi run python -m arena_interface --ethernet 192.168.10.104 bench --cmd-iters 500 --spf-rate 250
@@ -307,6 +308,68 @@ A practical workflow is:
 2. Capture QS logs on representative runs or anomalous runs.
 3. Use the QS logs to explain why two host-visible results differ.
 
+## QSPY from the Python repository
+
+This repository now includes the same pinned QSPY helper flow that exists in the
+firmware repository. That makes it easy to install QTools and capture QS logs
+without leaving the Python benchmark environment.
+
+The helper installs Quantum Leaps QTools locally into:
+
+```text
+.tools/quantum-leaps/
+```
+
+That directory is ignored by `.gitignore`, so the downloaded tools do not end up
+in your commits.
+
+Install QTools and build QSPY if needed:
+
+```sh
+pixi run qtools-install
+```
+
+Run QSPY on Linux:
+
+```sh
+pixi run qspy -c /dev/ttyACM0 -b 115200
+```
+
+Run QSPY on macOS:
+
+```sh
+pixi run qspy -c /dev/cu.usbmodem1234 -b 115200
+```
+
+Run QSPY on Windows:
+
+```powershell
+pixi run qspy -c COM3 -b 115200
+```
+
+To show QSPY's own help instead of the wrapper help, use the explicit separator:
+
+```sh
+pixi run qspy -- -h
+```
+
+A typical workflow is to run QSPY in one terminal and the Python benchmark in
+another. This works well when the arena is controlled over Ethernet and QS is
+streamed over the USB serial port:
+
+```sh
+# terminal 1
+pixi run qspy -c /dev/ttyACM0 -b 115200
+
+# terminal 2
+export ARENA_ETH_IP=192.168.10.104
+pixi run bench-full --json-out bench_results.jsonl
+```
+
+Do not try to use QSPY and the Python package's serial transport on the same
+serial port at the same time. If you want simultaneous control and QS capture,
+use Ethernet for control and USB serial for QSPY.
+
 ## Cross-platform notes
 
 The project configuration targets Linux, macOS, and Windows through Pixi, and
@@ -360,4 +423,6 @@ pixi run test
 pixi run check
 pixi run build
 pixi run archive
+pixi run qtools-install
+pixi run qspy -c /dev/ttyACM0 -b 115200
 ```

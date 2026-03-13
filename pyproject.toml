@@ -85,6 +85,8 @@ test = "pytest"
 check = [{ task = "lint" }, { task = "test" }]
 build = "python -m build"
 archive = "git archive --format=zip --output=../arena_interface_python.zip HEAD"
+qtools-install = "python tools/quantum_leaps_tools.py qtools-install"
+qspy = "python tools/quantum_leaps_tools.py qspy"
 bench = "arena-interface bench"
 bench-full = "arena-interface bench --stream-path patterns/pat0004.pat"
 bench-smoke = "arena-interface bench --cmd-iters 250 --spf-seconds 2 --stream-path patterns/pat0004.pat --stream-seconds 2"
@@ -94,3 +96,15 @@ bench-no-quickack = "arena-interface --no-tcp-quickack bench"
 bench-no-nodelay = "arena-interface --no-tcp-nodelay bench"
 bench-no-latency-tuning = "arena-interface --no-tcp-nodelay --no-tcp-quickack bench"
 bench-socket-matrix = "python scripts/bench_matrix.py"
+
+[tool.pixi.target.linux-64.dependencies]
+make = "*"
+c-compiler = "*"
+
+[tool.pixi.target.osx-64.dependencies]
+make = "*"
+c-compiler = "*"
+
+[tool.pixi.target.osx-arm64.dependencies]
+make = "*"
+c-compiler = "*"
