@@ -1,4 +1,4 @@
-"""Python interface to the Reiser lab ArenaController."""
+"""Python interface and CLI for the Reiser Lab ArenaController."""
 
 from .__about__ import (
     __author__,

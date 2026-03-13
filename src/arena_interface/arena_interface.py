@@ -1,9 +1,8 @@
-"""Python interface to the Reiser lab ArenaController."""
+"""Python interface and CLI for the Reiser Lab ArenaController."""
 from __future__ import annotations
 
 import atexit
 import cProfile
-from contextlib import contextmanager
 import datetime
 import json
 import math
@@ -16,9 +15,13 @@ import struct
 import subprocess
 import sys
 import time
+from contextlib import contextmanager
 from typing import Callable
 
-import serial
+try:
+    import serial
+except ModuleNotFoundError:  # pragma: no cover - exercised in minimal environments
+    serial = None
 
 
 ETHERNET_SERVER_PORT = 62222
@@ -423,6 +426,11 @@ class ArenaInterface:
 
     def set_serial_mode(self, port, baudrate=SERIAL_BAUDRATE):
         """Set serial mode specifying the serial port."""
+        if serial is None:
+            raise RuntimeError(
+                "Serial transport requires pyserial. Install runtime dependencies or `pip install pyserial`."
+            )
+
         self._close_ethernet_socket()
         self._ethernet_ip_address = ''
         if self._serial:

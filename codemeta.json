@@ -5,9 +5,9 @@
   "codeRepository": "https://github.com/janelia-python/arena_interface_python",
   "dateCreated": "2023-10-17",
   "dateModified": "2026-03-13",
-  "name": "arena_interface",
-  "version": "6.0.0",
-  "description": "Python interface to the Reiser lab ArenaController.",
+  "name": "arena-interface",
+  "version": "7.0.0",
+  "description": "Python interface and CLI for the Reiser Lab ArenaController.",
   "programmingLanguage": [
     "Python 3"
   ],

@@ -219,3 +219,4 @@ flycheck_*.el
 # Bench outputs
 bench_results*.jsonl
 bench_matrix*.jsonl
+.DS_Store

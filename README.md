@@ -1,52 +1,55 @@
-# arena_interface
+# arena-interface
 
-`arena_interface` is a small Python package and CLI for controlling the Reiser
-Lab `ArenaController` firmware over serial or Ethernet and for collecting
+`arena-interface` is a small typed Python package and CLI for controlling the
+Reiser Lab `ArenaController` firmware over serial or Ethernet and for collecting
 host-side benchmark results that can be compared with firmware-side `PERF_*` QS
 records.
 
-This repository uses a single `pyproject.toml` as the source of truth for
-package metadata, development tooling, and Pixi tasks. The importable package
-lives under `src/`, which helps catch packaging mistakes earlier than a flat
-layout.
+The distribution name is `arena-interface` and the import package is
+`arena_interface`:
 
-## Repository layout
-
-- `src/arena_interface/`: importable package and CLI
-- `scripts/`: developer helper scripts, including benchmark matrix helpers
-- `tools/`: repository-local helper tools such as the QSPY/QTools wrapper
-- `tests/`: lightweight smoke tests that do not require hardware
-- `patterns/`: small example pattern files for streaming tests
-- `pyproject.toml`: packaging metadata, tool configuration, and Pixi manifest
-
-## Quick start with Pixi
-
-Install Pixi, then from the repository root run:
-
-```sh
-pixi install
-pixi run help
+```python
+from arena_interface import ArenaInterface
 ```
 
-You can also run ad-hoc Python inside the managed environment:
+## Install
+
+### End users
+
+Create a virtual environment and install from PyPI:
 
 ```sh
-pixi run python -c "from arena_interface import ArenaInterface; print(ArenaInterface)"
+python -m venv .venv
+. .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install arena-interface
 ```
 
-If you prefer an interactive shell with the package already available, use:
+On Windows PowerShell:
+
+```powershell
+py -m venv .venv
+.\.venv\Scripts\Activate.ps1
+py -m pip install --upgrade pip
+py -m pip install arena-interface
+```
+
+### Contributors
+
+For local development without Pixi:
 
 ```sh
-pixi shell
-python
-# or, if you already have IPython available in that environment:
-# ipython
+python -m venv .venv
+. .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -e ".[dev]"
+python -m pytest -q
 ```
 
-## Interactive Python / IPython examples
+If you use Pixi instead, run `pixi install`. Pixi will create or refresh
+`pixi.lock` from `pyproject.toml`.
 
-The most convenient way to drive the arena interactively is through the
-`ArenaInterface` class.
+## Quick start
 
 ### Ethernet example
 
@@ -84,345 +87,101 @@ with ArenaInterface() as ai:
 
 On Windows, use a COM port such as `COM3` instead of `/dev/ttyACM0`.
 
-### Notes on the interactive API
-
-- `set_ethernet_mode("192.168.10.104")` selects Ethernet transport.
-- `set_serial_mode("/dev/ttyACM0")` or `set_serial_mode("COM3")` selects serial transport.
-- `show_pattern_frame(pattern_id, frame_index, frame_rate=200)` starts
-  `SHOW_PATTERN_FRAME` mode and displays the initial frame.
-- `update_pattern_frame(frame_index)` updates the currently shown pattern frame.
-- `get_perf_stats()` returns the raw binary perf payload from the controller.
-- `reset_perf_stats()` clears firmware-side perf counters.
-- `play_pattern(...)` and `play_pattern_analog_closed_loop(...)` are available
-  for the older play-pattern flows.
-
 ## Command-line usage
 
-There are two convenient ways to use the CLI:
-
-1. Use the predefined Pixi tasks for the common operations.
-2. Run the module entry point directly with `pixi run python -m arena_interface ...`.
-
-Inside `pixi shell`, the installed console script is also available directly as
-`arena-interface`.
-
-### Discover the CLI
+The console entry point is `arena-interface`.
 
 ```sh
-pixi run help
-pixi run python -m arena_interface --help
-pixi run python -m arena_interface --ethernet 192.168.10.104 --help
+arena-interface --ethernet 192.168.10.104 all-on
+arena-interface --ethernet 192.168.10.104 all-off
+arena-interface --ethernet 192.168.10.104 set-refresh-rate 200
+arena-interface --ethernet 192.168.10.104 switch-grayscale 1
+arena-interface --ethernet 192.168.10.104 get-perf-stats
+arena-interface --ethernet 192.168.10.104 reset-perf-stats
 ```
 
-Click converts Python command names such as `all_on` into CLI commands such as
-`all-on`. The main commands are:
-
-- `all-on`
-- `all-off`
-- `set-refresh-rate`
-- `display-reset`
-- `switch-grayscale`
-- `reset-perf-stats`
-- `get-perf-stats`
-- `bench`
-
-### Ethernet command-line examples
+Serial examples:
 
 ```sh
-pixi run python -m arena_interface --ethernet 192.168.10.104 all-on
-pixi run python -m arena_interface --ethernet 192.168.10.104 all-off
-pixi run python -m arena_interface --ethernet 192.168.10.104 set-refresh-rate 200
-pixi run python -m arena_interface --ethernet 192.168.10.104 switch-grayscale 1
-pixi run python -m arena_interface --ethernet 192.168.10.104 get-perf-stats
-pixi run python -m arena_interface --ethernet 192.168.10.104 reset-perf-stats
+arena-interface --serial /dev/ttyACM0 all-on
+arena-interface --serial /dev/ttyACM0 all-off
 ```
 
-### Serial command-line examples
-
-```sh
-pixi run python -m arena_interface --serial /dev/ttyACM0 all-on
-pixi run python -m arena_interface --serial /dev/ttyACM0 all-off
-```
-
-Windows PowerShell example:
+PowerShell:
 
 ```powershell
-pixi run python -m arena_interface --serial COM3 all-on
-pixi run python -m arena_interface --serial COM3 all-off
+arena-interface --serial COM3 all-on
+arena-interface --serial COM3 all-off
 ```
 
 ### Environment-variable based usage
 
-If you set the transport once, the short Pixi tasks become easier to use:
-
 ```sh
 export ARENA_ETH_IP=192.168.10.104
-pixi run all-on
-pixi run all-off
-pixi run bench
+arena-interface all-on
+arena-interface all-off
+arena-interface bench
 ```
 
 PowerShell equivalent:
 
 ```powershell
 $env:ARENA_ETH_IP = "192.168.10.104"
-pixi run all-on
-pixi run all-off
-pixi run bench
+arena-interface all-on
+arena-interface all-off
+arena-interface bench
 ```
 
-## Quick smoke tests
+## Repository layout
 
-Before running longer benchmarks, use the `all-on` and `all-off` tasks to make
-sure the host can talk to the arena and that the display is responding.
+This repository uses a modern `src/` layout and a single `pyproject.toml` as
+its packaging and tooling source of truth.
 
-For Ethernet:
+- `src/arena_interface/`: importable package, version metadata, and CLI
+- `tests/`: lightweight tests that do not require hardware
+- `scripts/`: developer helper scripts, including benchmark matrix helpers
+- `tools/`: repository-local helper tools such as the QSPY/QTools wrapper
+- `patterns/`: example pattern files for streaming tests
+- `.github/workflows/`: CI and PyPI publishing automation
+- `pyproject.toml`: package metadata, tool configuration, and Pixi manifest
+- `MANIFEST.in`: explicit source-distribution file list for non-package assets
+
+The package version lives in `src/arena_interface/__about__.py`; setuptools
+reads that value dynamically so wheel, sdist, import metadata, and repository
+metadata stay aligned.
+
+## Development workflow
+
+### Pixi
 
 ```sh
-export ARENA_ETH_IP=192.168.10.104
-pixi run all-on
-pixi run all-off
-```
-
-For serial:
-
-```sh
-export ARENA_SERIAL_PORT=/dev/ttyACM0
-pixi run all-on
-pixi run all-off
-```
-
-On Windows PowerShell, set the transport variable like this before running the
-same Pixi tasks:
-
-```powershell
-$env:ARENA_ETH_IP = "192.168.10.104"
-# or
-$env:ARENA_SERIAL_PORT = "COM3"
-pixi run all-on
-pixi run all-off
-```
-
-These tasks are a quick sanity check for:
-
-- transport configuration
-- basic command/response communication
-- visible LED output
-
-If `pixi run all-on` succeeds but a benchmark later fails, that usually means
-the basic connection is fine and the problem is in benchmark configuration,
-streaming, or timing rather than simple connectivity.
-
-## Benchmark workflow
-
-The CLI still supports direct invocation, but the normal developer workflow is
-now through `pixi run` tasks.
-
-Set the transport once via environment variables or pass the flags explicitly.
-For Ethernet benchmarks, the simplest setup is:
-
-```sh
-export ARENA_ETH_IP=192.168.10.104
-pixi run bench-full --json-out bench_results.jsonl
-```
-
-Useful pre-defined tasks:
-
-- `pixi run all-on`: turn all LEDs on as a communication sanity check
-- `pixi run all-off`: turn all LEDs off as a communication sanity check
-- `pixi run bench`: default host-side suite (`command_rtt` + `spf_updates`)
-- `pixi run bench-full`: default host-side suite plus `stream_frames` using `patterns/pat0004.pat`
-- `pixi run bench-smoke`: shorter full run for quick confidence checks
-- `pixi run bench-persistent`: force persistent TCP sockets for small-command RTT
-- `pixi run bench-new-connection`: open a new TCP connection per command
-- `pixi run bench-no-quickack`: disable Linux `TCP_QUICKACK` but keep `TCP_NODELAY`
-- `pixi run bench-no-nodelay`: disable `TCP_NODELAY` but keep `TCP_QUICKACK` requested
-- `pixi run bench-no-latency-tuning`: disable both socket latency knobs
-- `pixi run bench-socket-matrix --json-out bench_matrix.jsonl`: run a small comparison matrix across socket-option variants
-
-Extra arguments after the task are forwarded to the CLI or script, so you can
-still customize labels, durations, rates, and pattern paths.
-
-Examples:
-
-```sh
-pixi run bench --json-out host_only.jsonl
-pixi run bench-full --json-out host_plus_stream.jsonl
-pixi run bench-full --stream-rate 250 --stream-seconds 8 --json-out stream_250hz.jsonl
-pixi run python -m arena_interface --ethernet 192.168.10.104 bench --cmd-iters 500 --spf-rate 250
-```
-
-## Benchmark progress, timeouts, and failure reporting
-
-The benchmark command now prints phase start and finish lines as it runs, along
-with throttled in-phase progress for the long loops. That makes it much easier
-to tell whether a run is healthy, slow, or stuck.
-
-By default, the benchmark suite applies a temporary per-operation I/O timeout of
-`5.0` seconds. This avoids the old behavior where a missing reply could block a
-run forever.
-
-You can override that timeout from the CLI:
-
-```sh
-pixi run bench --io-timeout 10
-pixi run bench-full --io-timeout 0
-```
-
-Use `--io-timeout 0` to disable the temporary benchmark timeout and fall back to
-blocking I/O.
-
-If a phase fails, the suite now:
-
-- records `status=error`
-- records the failed phase name and exception in the JSON result
-- attempts a best-effort `ALL_OFF` cleanup before returning
-- exits the CLI with a nonzero status
-
-This makes it much easier to automate benchmarks in CI-like shell scripts or
-lab orchestration scripts.
-
-## Host-only benchmarks versus QS logs
-
-The Python benchmark suite is enough to compare host-visible and end-to-end
-behavior across:
-
-- operating systems
-- host machines
-- NICs, switches, and cables
-- socket-option policies such as `TCP_NODELAY` and `TCP_QUICKACK`
-
-The JSON output is therefore a good default artifact for broad comparisons
-across rigs.
-
-QS logs are still important when you need firmware-internal detail, including:
-
-- `PERF_NET` poll cadence and command processing cost
-- `PERF_UPD` receive / process / commit / applied / coalesced counts
-- display-transfer and SPI bottlenecks
-- confirmation that the rig applied what the host sent
-
-A practical workflow is:
-
-1. Run Python-only benchmarks everywhere for broad comparison.
-2. Capture QS logs on representative runs or anomalous runs.
-3. Use the QS logs to explain why two host-visible results differ.
-
-## QSPY from the Python repository
-
-This repository now includes the same pinned QSPY helper flow that exists in the
-firmware repository. That makes it easy to install QTools and capture QS logs
-without leaving the Python benchmark environment.
-
-The helper installs Quantum Leaps QTools locally into:
-
-```text
-.tools/quantum-leaps/
-```
-
-That directory is ignored by `.gitignore`, so the downloaded tools do not end up
-in your commits.
-
-Install QTools and build QSPY if needed:
-
-```sh
-pixi run qtools-install
-```
-
-Run QSPY on Linux:
-
-```sh
-pixi run qspy -c /dev/ttyACM0 -b 115200
-```
-
-Run QSPY on macOS:
-
-```sh
-pixi run qspy -c /dev/cu.usbmodem1234 -b 115200
-```
-
-Run QSPY on Windows:
-
-```powershell
-pixi run qspy -c COM3 -b 115200
-```
-
-To show QSPY's own help instead of the wrapper help, use the explicit separator:
-
-```sh
-pixi run qspy -- -h
-```
-
-A typical workflow is to run QSPY in one terminal and the Python benchmark in
-another. This works well when the arena is controlled over Ethernet and QS is
-streamed over the USB serial port:
-
-```sh
-# terminal 1
-pixi run qspy -c /dev/ttyACM0 -b 115200
-
-# terminal 2
-export ARENA_ETH_IP=192.168.10.104
-pixi run bench-full --json-out bench_results.jsonl
-```
-
-Do not try to use QSPY and the Python package's serial transport on the same
-serial port at the same time. If you want simultaneous control and QS capture,
-use Ethernet for control and USB serial for QSPY.
-
-## Cross-platform notes
-
-The project configuration targets Linux, macOS, and Windows through Pixi, and
-the basic host functionality is designed to work across those operating
-systems.
-
-What is portable:
-
-- serial control through `pyserial`
-- Ethernet control through standard Python sockets
-- the Click-based CLI
-- the JSON benchmark output
-- the `all-on`, `all-off`, and `bench` workflows
-
-What is Linux-specific or Linux-enhanced:
-
-- `TCP_QUICKACK` support
-- route and interface metadata captured from `ip route get`
-- extra NIC details captured from `/sys/class/net/...`
-
-So the short answer is: yes, the code is intended to work on Linux, macOS, and
-Windows, but the Linux runs expose the most low-level socket tuning and network
-metadata.
-
-For cross-OS comparisons, the safest approach is:
-
-1. Treat `TCP_NODELAY` as the portable latency knob.
-2. Treat `TCP_QUICKACK` as Linux-specific and compare it separately.
-3. Use the same benchmark JSON schema everywhere.
-4. Use QS logs when you need to explain firmware-side differences.
-
-## Socket latency tuning
-
-The host code exposes both `TCP_NODELAY` and `TCP_QUICKACK` as explicit options.
-That makes it easy to compare:
-
-- Linux Python with both knobs enabled
-- Linux Python with only one enabled
-- platforms where `TCP_QUICKACK` is unavailable or ignored
-
-The benchmark metadata records which socket settings were requested and whether
-`TCP_QUICKACK` was supported on the current host, so later analysis can compare
-runs fairly.
-
-## Development tasks
-
-```sh
-pixi run format
-pixi run lint
-pixi run test
+pixi install
+pixi run help
 pixi run check
-pixi run build
-pixi run archive
-pixi run qtools-install
-pixi run qspy -c /dev/ttyACM0 -b 115200
+pixi run release-check
 ```
+
+### Plain pip
+
+```sh
+python -m pip install -e ".[dev]"
+python -m pytest -q
+python -m build
+python -m twine check dist/*
+```
+
+## Releasing
+
+The repository includes GitHub Actions workflows for CI and PyPI Trusted
+Publishing.
+
+Recommended release flow:
+
+1. Update `CHANGELOG.md`.
+2. Run `pixi run release-check` or the equivalent pip commands above.
+3. Commit the release changes and create a `vX.Y.Z` tag.
+4. Push the tag to GitHub.
+5. The `publish.yml` workflow builds the wheel and sdist, then publishes them
+   to PyPI using Trusted Publishing.
+
+For conda-forge guidance, see `RELEASING.md`.
