@@ -12,3 +12,7 @@
   while still requiring it for serial transport usage
 - added CI and PyPI Trusted Publishing GitHub Actions workflows
 - documented a reproducible release process for PyPI and conda-forge
+- expanded the README with Pixi benchmark usage, JSONL capture, and QSPY log
+  collection guidance for performance characterization
+- relaxed the publish workflow so release tags can be either `7.0.0` or
+  `v7.0.0`

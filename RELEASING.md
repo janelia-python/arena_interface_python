@@ -26,15 +26,31 @@ If you use Pixi and `pyproject.toml` changed, regenerate `pixi.lock` with
 The repository includes `.github/workflows/publish.yml`, which is intended for
 GitHub Actions Trusted Publishing.
 
+One-time setup on GitHub:
+
+1. In the repository settings, create a GitHub Actions environment named
+   `pypi`.
+2. Optionally add protection rules or required reviewers if you want a manual
+   approval gate before publishing.
+
 One-time setup on PyPI:
 
 1. Create the `arena-interface` project on PyPI if it does not already exist.
 2. In the PyPI project settings, add a Trusted Publisher for this GitHub
-   repository and workflow.
-3. Push a tag such as `v7.0.0`.
+   repository.
+3. Use workflow filename `publish.yml` and environment name `pypi`.
 
-After the tag is pushed, GitHub Actions will build `dist/*` and publish to
-PyPI without storing a long-lived API token in GitHub secrets.
+Release trigger:
+
+1. Push a release tag such as `7.0.0` or `v7.0.0`.
+2. GitHub Actions will build `dist/*` and publish to PyPI without storing a
+   long-lived API token in GitHub secrets.
+3. `workflow_dispatch` is kept as a manual build/debug entry point; the actual
+   PyPI publish step only runs for tag pushes.
+
+The normal release path is to let GitHub Actions publish via Trusted
+Publishing. Local `twine upload` is only needed if you intentionally want to
+bypass that workflow.
 
 ## Conda-forge
 
