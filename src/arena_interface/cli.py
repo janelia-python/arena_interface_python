@@ -23,6 +23,8 @@ def _print_phase_history(suite: dict) -> None:
             f"{phase.get('name')}: status={phase.get('status')} "
             f"elapsed_s={float(phase.get('elapsed_s', 0.0)):.3f}"
         )
+        if phase.get("cleanup_status"):
+            line += f" cleanup={phase.get('cleanup_status')}"
         if phase.get("error"):
             line += f" error={phase.get('error_type')}: {phase.get('error')}"
         click.echo(line)
@@ -38,7 +40,7 @@ def _print_suite_summary(
     click.echo(
         f"meta: label={meta.get('label')} host={meta.get('hostname')} "
         f"python={meta.get('python')} transport={meta.get('transport')} eth_ip={meta.get('ethernet_ip')} "
-        f"io_timeout={meta.get('bench_io_timeout_s')}"
+        f"io_timeout={meta.get('bench_io_timeout_s')} status={suite.get('status')}"
     )
 
     if include_connect and ("connect_time" in suite):
@@ -102,10 +104,23 @@ def _print_suite_summary(
 
     _print_phase_history(suite)
 
+    warnings = suite.get("warnings") or []
+    if warnings:
+        click.echo("\n-- warnings --")
+        for warning in warnings:
+            click.echo(
+                "{phase}: {wtype} {message}".format(
+                    phase=warning.get("phase"),
+                    wtype=warning.get("type"),
+                    message=warning.get("message"),
+                )
+            )
+
     cleanup = suite.get("cleanup") or {}
     if cleanup.get("all_off_attempted"):
         click.echo(
-            "\ncleanup: all_off_ok={ok} error={err}".format(
+            "\ncleanup: status={status} all_off_ok={ok} error={err}".format(
+                status=cleanup.get("status"),
                 ok=cleanup.get("all_off_ok"),
                 err=cleanup.get("all_off_error"),
             )
@@ -354,7 +369,7 @@ def bench(
         ArenaInterface.write_bench_jsonl(str(json_out), suite)
         click.echo(f"\nappended JSONL: {json_out}")
 
-    if suite.get("status") != "ok":
+    if suite.get("status") == "error":
         error = suite.get("error") or {}
         raise click.ClickException(
             "benchmark failed in {phase}: {etype}: {message}".format(
@@ -363,6 +378,12 @@ def bench(
                 message=error.get("message"),
             )
         )
+
+    if suite.get("status") == "ok_cleanup_failed":
+        click.echo(
+            "\nBench done with a cleanup warning. Measured results were kept; review the cleanup diagnostics and keep the QSPY log.\n"
+        )
+        return
 
     click.echo("\nBench done. Capture the QS PERF_* lines to compare device-side timings.\n")
 

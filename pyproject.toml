@@ -46,6 +46,7 @@ Firmware = "https://github.com/janelia-arduino/ArenaController"
 
 [project.scripts]
 arena-interface = "arena_interface.cli:cli"
+arena-interface-perf-summary = "arena_interface.perf_summary_cli:main"
 
 [tool.setuptools]
 package-dir = { "" = "src" }
@@ -111,9 +112,12 @@ bench-smoke = "arena-interface bench --cmd-iters 250 --spf-seconds 2 --stream-pa
 bench-persistent = "arena-interface bench --cmd-connect-mode persistent"
 bench-new-connection = "arena-interface bench --cmd-connect-mode new_connection"
 bench-no-quickack = "arena-interface --no-tcp-quickack bench"
+bench-windows-like = "arena-interface --no-tcp-quickack bench"
+bench-full-windows-like = "arena-interface --no-tcp-quickack bench --stream-path patterns/pat0004.pat"
 bench-no-nodelay = "arena-interface --no-tcp-nodelay bench"
 bench-no-latency-tuning = "arena-interface --no-tcp-nodelay --no-tcp-quickack bench"
 bench-socket-matrix = "python scripts/bench_matrix.py"
+perf-summary = "arena-interface-perf-summary"
 
 [tool.pixi.target.linux-64.dependencies]
 make = "*"

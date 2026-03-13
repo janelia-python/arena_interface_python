@@ -40,6 +40,7 @@ SERIAL_BAUDRATE = 115200
 ANALOG_OUTPUT_VALUE_MIN = 100
 ANALOG_OUTPUT_VALUE_MAX = 4095
 BENCH_IO_TIMEOUT_S = 5.0
+BENCH_CLEANUP_RECONNECT_BACKOFF_S = 0.25
 
 # Chunk size used for optional STREAM_FRAME chunked sends.
 # Keep this comfortably below typical MTU to avoid excessive fragmentation.
@@ -169,23 +170,112 @@ class ArenaInterface:
         """Return a compact exception description for logs/results."""
         return f"{type(exc).__name__}: {exc}"
 
+    @staticmethod
+    def _run_command_text(args: list[str]) -> str:
+        """Run a command and return a compact text payload for diagnostics."""
+        try:
+            proc = subprocess.run(
+                args,
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+        except Exception as exc:
+            return f"<unavailable: {type(exc).__name__}: {exc}>"
+
+        stdout = (proc.stdout or "").strip()
+        stderr = (proc.stderr or "").strip()
+        payload = stdout or stderr or "<no output>"
+        if proc.returncode != 0:
+            return f"[exit {proc.returncode}] {payload}"
+        return payload
+
+    def _collect_linux_net_diagnostics(self, peer_ip: str | None) -> dict[str, str]:
+        """Collect small Linux routing and neighbor diagnostics for benchmark cleanup."""
+        if not peer_ip or platform.system().lower() != "linux":
+            return {}
+
+        return {
+            "peer_ip": str(peer_ip),
+            "route_get": self._run_command_text(["ip", "route", "get", str(peer_ip)]),
+            "neighbor": self._run_command_text(["ip", "neigh", "show", str(peer_ip)]),
+        }
+
     def _safe_all_off(
         self,
         *,
         status_callback: StatusCallback | None = None,
         context: str = "bench cleanup",
-    ) -> str | None:
-        """Best-effort ALL_OFF used by benchmark cleanup paths."""
+    ) -> dict[str, object]:
+        """Best-effort ALL_OFF used by benchmark cleanup paths.
+
+        Cleanup failures after a successful measurement should be preserved as
+        warnings, not turned into hard benchmark failures that discard the
+        already-collected timing data.
+        """
+        cleanup: dict[str, object] = {
+            "all_off_attempted": True,
+            "all_off_ok": False,
+            "status": "failed",
+            "all_off_error": None,
+            "retry_performed": False,
+            "diagnostics": {},
+            "attempts": [],
+        }
+
+        def record_attempt(attempt: int, ok: bool, error: str | None) -> None:
+            attempts = cleanup.setdefault("attempts", [])
+            assert isinstance(attempts, list)
+            attempts.append(
+                {
+                    "attempt": int(attempt),
+                    "ok": bool(ok),
+                    "error": error,
+                }
+            )
+
         try:
             self.all_off()
+            record_attempt(1, True, None)
+            cleanup["all_off_ok"] = True
+            cleanup["status"] = "ok"
             self._bench_emit_status(status_callback, f"[bench] {context}: ALL_OFF ok")
-            return None
+            return cleanup
         except Exception as exc:
             message = self._format_exception(exc)
+            record_attempt(1, False, message)
+            cleanup["all_off_error"] = message
+            cleanup["diagnostics"] = self._collect_linux_net_diagnostics(self._ethernet_ip_address)
             self._socket_last_error = message
             self._bench_emit_status(status_callback, f"[bench] {context}: ALL_OFF failed: {message}")
+
+        should_retry = bool(self._ethernet_ip_address)
+        if should_retry:
+            cleanup["retry_performed"] = True
             self._close_ethernet_socket()
-            return message
+            time.sleep(BENCH_CLEANUP_RECONNECT_BACKOFF_S)
+            try:
+                self.all_off()
+                record_attempt(2, True, None)
+                cleanup["all_off_ok"] = True
+                cleanup["status"] = "ok_after_retry"
+                self._bench_emit_status(
+                    status_callback,
+                    f"[bench] {context}: ALL_OFF recovered after reconnect/backoff",
+                )
+                return cleanup
+            except Exception as exc:
+                retry_message = self._format_exception(exc)
+                record_attempt(2, False, retry_message)
+                cleanup["all_off_error"] = retry_message
+                self._socket_last_error = retry_message
+                self._bench_emit_status(
+                    status_callback,
+                    f"[bench] {context}: ALL_OFF retry failed: {retry_message}",
+                )
+
+        self._close_ethernet_socket()
+        return cleanup
 
     def _refresh_quickack(self, ethernet_socket: socket.socket) -> None:
         """Best-effort refresh of TCP_QUICKACK on Linux.
@@ -1018,6 +1108,16 @@ class ArenaInterface:
             next_progress_ns += step_ns
         return next_progress_ns
 
+    @staticmethod
+    def _cleanup_result_default() -> dict[str, object]:
+        """Return a normalized cleanup result placeholder."""
+        return {
+            "all_off_attempted": False,
+            "all_off_ok": None,
+            "status": "not_attempted",
+            "all_off_error": None,
+        }
+
     def bench_metadata(self, label: str | None = None) -> dict:
         """Return a small metadata blob to attach to benchmark results."""
         try:
@@ -1178,7 +1278,7 @@ class ArenaInterface:
         self._socket_last_error = None
 
         reconnects_before = self.get_socket_reconnects(reset=False)
-        cleanup_error: str | None = None
+        cleanup: dict[str, object] | None = None
         progress_step_ns = max(1, int(float(progress_interval_s) * 1e9)) if progress_interval_s > 0 else 0
 
         try:
@@ -1259,13 +1359,12 @@ class ArenaInterface:
             )
         finally:
             if wrap_mode:
-                cleanup_error = self._safe_all_off(
+                cleanup = self._safe_all_off(
                     status_callback=status_callback,
                     context="command_rtt cleanup",
                 )
-
-        if cleanup_error is not None:
-            raise RuntimeError(f"command_rtt cleanup failed: {cleanup_error}")
+                if "summary" in locals():
+                    summary["cleanup"] = cleanup
 
         return summary
 
@@ -1304,7 +1403,7 @@ class ArenaInterface:
         self._socket_last_error = None
 
         reconnects_before = self.get_socket_reconnects(reset=False)
-        cleanup_error: str | None = None
+        cleanup: dict[str, object] | None = None
         progress_step_ns = max(1, int(float(progress_interval_s) * 1e9)) if progress_interval_s > 0 else 0
 
         try:
@@ -1412,13 +1511,12 @@ class ArenaInterface:
                 "last_socket_error": self._socket_last_error,
             }
         finally:
-            cleanup_error = self._safe_all_off(
+            cleanup = self._safe_all_off(
                 status_callback=status_callback,
                 context="spf_updates cleanup",
             )
-
-        if cleanup_error is not None:
-            raise RuntimeError(f"spf_updates cleanup failed: {cleanup_error}")
+            if "summary" in locals():
+                summary["cleanup"] = cleanup
 
         return summary
 
@@ -1448,7 +1546,7 @@ class ArenaInterface:
         self._socket_last_error = None
 
         reconnects_before = self.get_socket_reconnects(reset=False)
-        cleanup_error: str | None = None
+        cleanup: dict[str, object] | None = None
 
         try:
             self.reset_perf_stats()
@@ -1478,13 +1576,12 @@ class ArenaInterface:
                 }
             )
         finally:
-            cleanup_error = self._safe_all_off(
+            cleanup = self._safe_all_off(
                 status_callback=status_callback,
                 context="stream_frames cleanup",
             )
-
-        if cleanup_error is not None:
-            raise RuntimeError(f"stream_frames cleanup failed: {cleanup_error}")
+            if "stats" in locals():
+                stats["cleanup"] = cleanup
 
         return stats
 
@@ -1526,6 +1623,7 @@ class ArenaInterface:
             "status": "ok",
             "failed_phase": None,
             "error": None,
+            "warnings": [],
             "phases": [],
         }
         results["meta"]["bench_io_timeout_s"] = self._coerce_timeout(bench_io_timeout_s)
@@ -1558,27 +1656,54 @@ class ArenaInterface:
                     status_callback,
                     f"[bench] FAILED {name}: {self._format_exception(exc)}",
                 )
-                cleanup_error = self._safe_all_off(
+                cleanup = self._safe_all_off(
                     status_callback=status_callback,
                     context=f"{name} post-error cleanup",
                 )
-                if cleanup_error is not None:
-                    results["cleanup"] = {
-                        "all_off_attempted": True,
-                        "all_off_ok": False,
-                        "all_off_error": cleanup_error,
-                    }
-                else:
-                    results["cleanup"] = {
-                        "all_off_attempted": True,
-                        "all_off_ok": True,
-                        "all_off_error": None,
-                    }
+                cleanup["phase"] = name
+                results["cleanup"] = cleanup
                 return False
 
             phase["status"] = "ok"
             phase["ended_utc"] = self._utc_now_iso()
             phase["elapsed_s"] = (time.perf_counter_ns() - started_ns) / 1e9
+
+            phase_result = results.get(name)
+            phase_cleanup = None
+            if isinstance(phase_result, dict):
+                cleanup_value = phase_result.get("cleanup")
+                if isinstance(cleanup_value, dict):
+                    phase_cleanup = cleanup_value
+
+            if phase_cleanup is not None:
+                phase["cleanup_status"] = phase_cleanup.get("status")
+                cleanup_status = str(phase_cleanup.get("status"))
+                if cleanup_status == "failed":
+                    results["status"] = "ok_cleanup_failed"
+                    results["warnings"].append(
+                        {
+                            "phase": name,
+                            "type": "cleanup_failed",
+                            "message": phase_cleanup.get("all_off_error"),
+                        }
+                    )
+                    self._bench_emit_status(
+                        status_callback,
+                        f"[bench] WARNING {name}: cleanup failed after measurement: {phase_cleanup.get('all_off_error')}",
+                    )
+                elif cleanup_status == "ok_after_retry":
+                    results["warnings"].append(
+                        {
+                            "phase": name,
+                            "type": "cleanup_retried",
+                            "message": "ALL_OFF recovered after reconnect/backoff",
+                        }
+                    )
+                    self._bench_emit_status(
+                        status_callback,
+                        f"[bench] warning {name}: cleanup recovered after reconnect/backoff",
+                    )
+
             self._bench_emit_status(
                 status_callback,
                 f"[bench] finished {name} in {phase['elapsed_s']:.3f} s",
@@ -1646,12 +1771,45 @@ class ArenaInterface:
             except OSError:
                 pass
 
-        if "cleanup" not in results:
+        if results.get("status") == "error":
+            if "cleanup" not in results:
+                results["cleanup"] = self._cleanup_result_default()
+            return results
+
+        phase_cleanups: dict[str, dict[str, object]] = {}
+        for phase in results.get("phases", []):
+            if not isinstance(phase, dict):
+                continue
+            name = phase.get("name")
+            if not isinstance(name, str):
+                continue
+            payload = results.get(name)
+            if not isinstance(payload, dict):
+                continue
+            cleanup = payload.get("cleanup")
+            if isinstance(cleanup, dict) and cleanup.get("all_off_attempted"):
+                phase_cleanups[name] = cleanup
+
+        if phase_cleanups:
+            status_rank = {"failed": 3, "ok_after_retry": 2, "ok": 1, "not_attempted": 0}
+            cleanup_status = max(
+                (str(cleanup.get("status", "not_attempted")) for cleanup in phase_cleanups.values()),
+                key=lambda status: status_rank.get(status, -1),
+                default="not_attempted",
+            )
+            first_error = next(
+                (cleanup.get("all_off_error") for cleanup in phase_cleanups.values() if cleanup.get("all_off_error")),
+                None,
+            )
             results["cleanup"] = {
-                "all_off_attempted": False,
-                "all_off_ok": None,
-                "all_off_error": None,
+                "all_off_attempted": True,
+                "all_off_ok": all(bool(cleanup.get("all_off_ok")) for cleanup in phase_cleanups.values()),
+                "status": cleanup_status,
+                "all_off_error": first_error,
+                "phases": phase_cleanups,
             }
+        elif "cleanup" not in results:
+            results["cleanup"] = self._cleanup_result_default()
 
         return results
 

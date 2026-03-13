@@ -17,6 +17,7 @@ from arena_interface.arena_interface import BENCH_IO_TIMEOUT_S, SERIAL_BAUDRATE
 
 VARIANTS: dict[str, dict[str, bool]] = {
     "default": {"tcp_nodelay": True, "tcp_quickack": True},
+    "windows_like": {"tcp_nodelay": True, "tcp_quickack": False},
     "no_quickack": {"tcp_nodelay": True, "tcp_quickack": False},
     "no_nodelay": {"tcp_nodelay": False, "tcp_quickack": True},
     "no_latency_tuning": {"tcp_nodelay": False, "tcp_quickack": False},
@@ -37,7 +38,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--variants",
         nargs="+",
         choices=sorted(VARIANTS),
-        default=["default", "no_quickack", "no_nodelay", "no_latency_tuning"],
+        default=["default", "windows_like", "no_nodelay", "no_latency_tuning"],
         help="Socket-option variants to execute",
     )
     parser.add_argument("--include-connect", action="store_true", help="Include TCP connect timing in each run")
@@ -77,7 +78,7 @@ def print_summary(variant_name: str, suite: dict) -> None:
     quickack = meta.get("tcp_quickack_supported") and meta.get("tcp_quickack_requested")
     status = suite.get("status", "unknown")
 
-    if status != "ok":
+    if status == "error":
         error = suite.get("error") or {}
         print(
             f"{variant_name:>18} | FAILED {error.get('phase')} {error.get('type')}: {error.get('message')}"
@@ -89,7 +90,7 @@ def print_summary(variant_name: str, suite: dict) -> None:
     stream = suite.get("stream_frames")
 
     line = (
-        f"{variant_name:>18} | cmd mean={cmd['mean_ms']:.3f} ms p99={cmd['p99_ms']:.3f} | "
+        f"{variant_name:>18} | status={status} cmd mean={cmd['mean_ms']:.3f} ms p99={cmd['p99_ms']:.3f} | "
         f"spf={spf['achieved_hz']:.1f} Hz | nodelay={meta.get('tcp_nodelay')} quickack={quickack}"
     )
     if isinstance(stream, dict):
@@ -147,7 +148,7 @@ def main() -> int:
             if args.json_out is not None:
                 ArenaInterface.write_bench_jsonl(str(args.json_out), suite)
             print_summary(variant_name, suite)
-            if suite.get("status") != "ok":
+            if suite.get("status") == "error":
                 exit_code = 1
 
     return exit_code

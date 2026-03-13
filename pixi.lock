@@ -339,7 +339,7 @@ packages:
 - pypi: ./
   name: arena-interface
   version: 7.0.0
-  sha256: ea2f12374a366a27937abf8e75f4accd573f8c683f8a32dd88d2d84ec2612942
+  sha256: 1fac158c54acb0b40bfbe66282dc7bb76f354683ff81616adc76067b8bae9d5b
   requires_dist:
   - click>=8.1
   - pyserial>=3.5
