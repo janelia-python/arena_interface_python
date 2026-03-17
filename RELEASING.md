@@ -15,7 +15,16 @@ Using Pixi:
 
 ```sh
 pixi install
+pixi run version-show
 pixi run release-check
+```
+
+If you are preparing a release, bump the version first and then refresh the
+lock file:
+
+```sh
+pixi run version-bump 7.0.1
+pixi install
 ```
 
 If you use Pixi and `pyproject.toml` changed, regenerate `pixi.lock` with
@@ -42,7 +51,7 @@ One-time setup on PyPI:
 
 Release trigger:
 
-1. Push a release tag such as `7.0.0` or `v7.0.0`.
+1. Push a release tag such as `<version>` or `v<version>`.
 2. GitHub Actions will build `dist/*` and publish to PyPI without storing a
    long-lived API token in GitHub secrets.
 3. `workflow_dispatch` is kept as a manual build/debug entry point; the actual
@@ -68,11 +77,11 @@ upstream project does not need to vendor the feedstock into this repository.
 
 Recommended flow after a PyPI release:
 
-1. Wait for the `7.0.0` sdist to be available on PyPI.
+1. Wait for the `<version>` sdist to be available on PyPI.
 2. Generate or update a conda-forge v1 recipe:
 
    ```sh
-   grayskull pypi --use-v1-format --strict-conda-forge arena-interface==7.0.0
+   grayskull pypi --use-v1-format --strict-conda-forge arena-interface==<version>
    ```
 
 3. Submit the generated `recipe.yaml` to `conda-forge/staged-recipes` for the
