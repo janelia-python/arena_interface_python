@@ -16,6 +16,7 @@ import subprocess
 import sys
 import time
 from contextlib import contextmanager
+from pathlib import Path
 from typing import Callable
 
 try:
@@ -1816,6 +1817,8 @@ class ArenaInterface:
     @staticmethod
     def write_bench_jsonl(path: str, result: dict) -> None:
         """Append one benchmark result object to a JSONL file."""
-        with open(path, "a", encoding="utf-8") as f:
+        output_path = Path(path)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        with output_path.open("a", encoding="utf-8") as f:
             f.write(json.dumps(result, sort_keys=True))
             f.write("\n")

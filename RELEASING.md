@@ -52,6 +52,15 @@ The normal release path is to let GitHub Actions publish via Trusted
 Publishing. Local `twine upload` is only needed if you intentionally want to
 bypass that workflow.
 
+Notes:
+
+- The workflows use current `actions/upload-artifact` and
+  `actions/download-artifact` major versions to stay ahead of the GitHub-hosted
+  runner migration away from Node.js 20.
+- In the PyPI publish job, `Generating and uploading digital attestations` is
+  expected with Trusted Publishing and `pypa/gh-action-pypi-publish`; it is not
+  a separate failure condition.
+
 ## Conda-forge
 
 Conda-forge packages are maintained in a separate feedstock repository, so the

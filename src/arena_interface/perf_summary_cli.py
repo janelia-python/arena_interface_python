@@ -62,6 +62,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     sys.stdout.write(render_text_summary(summary))
     if args.json_out is not None:
+        args.json_out.parent.mkdir(parents=True, exist_ok=True)
         args.json_out.write_text(json.dumps(summary, indent=2, sort_keys=True), encoding="utf-8")
     return 0
 
