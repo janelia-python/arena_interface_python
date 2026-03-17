@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- TBD
+
+## 7.0.1 - 2026-03-17
+
+- added a Pixi version helper task and script so package metadata and release
+  notes can be bumped consistently before the next tag
+
 ## 7.0.0 - 2026-03-13
 
 - moved package versioning to a single source of truth in

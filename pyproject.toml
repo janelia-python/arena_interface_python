@@ -76,7 +76,7 @@ select = ["E", "F", "I", "B", "UP"]
 
 [tool.pixi.workspace]
 name = "arena-interface-python"
-version = "7.0.0"
+version = "7.0.1"
 description = "Python interface and benchmark tooling for ArenaController."
 authors = ["Peter Polidoro <peter@polidoro.io>"]
 channels = ["conda-forge"]
@@ -97,6 +97,8 @@ default = { features = ["dev"], solve-group = "default" }
 [tool.pixi.tasks]
 python = "python"
 help = "arena-interface --help"
+version-show = "python scripts/bump_version.py --current"
+version-bump = "python scripts/bump_version.py"
 all-off = "arena-interface all-off"
 all-on = "arena-interface all-on"
 format = "ruff format ."

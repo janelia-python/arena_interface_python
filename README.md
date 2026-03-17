@@ -157,6 +157,7 @@ metadata stay aligned.
 ```sh
 pixi install
 pixi run help
+pixi run version-show
 pixi run check
 pixi run release-check
 pixi run qtools-install
@@ -223,6 +224,22 @@ python -m pytest -q
 python -m build
 python -m twine check dist/*
 ```
+
+### Version updates
+
+Use the Pixi helper to update the repository version consistently before a
+release:
+
+```sh
+pixi run version-show
+pixi run version-bump 7.0.1
+pixi install
+```
+
+`version-bump` updates the package metadata files and turns the current
+`## Unreleased` changelog section into a dated release entry. Run `pixi install`
+immediately afterward so `pixi.lock` is regenerated from the updated metadata
+before you commit or tag the release.
 
 ## Performance characterization workflow
 
@@ -374,12 +391,13 @@ Publishing.
 
 Recommended release flow:
 
-1. Update `CHANGELOG.md`.
-2. Run `pixi run release-check` or the equivalent pip commands above.
-3. Commit the release changes and create a release tag such as `7.0.0` or
-   `v7.0.0`.
-4. Push the tag to GitHub.
-5. The `publish.yml` workflow builds the wheel and sdist, then publishes them
+1. Add release notes under `## Unreleased` in `CHANGELOG.md`.
+2. Run `pixi run version-bump <version>` and then `pixi install`.
+3. Run `pixi run release-check` or the equivalent pip commands above.
+4. Commit the release changes and create a release tag such as `<version>` or
+   `v<version>`.
+5. Push the tag to GitHub.
+6. The `publish.yml` workflow builds the wheel and sdist, then publishes them
    to PyPI using Trusted Publishing.
 
 For conda-forge guidance, see `RELEASING.md`.

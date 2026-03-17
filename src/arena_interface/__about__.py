@@ -1,6 +1,6 @@
 """Project metadata for arena_interface."""
 
-__version__ = "7.0.0"
+__version__ = "7.0.1"
 __description__ = "Python interface and CLI for the Reiser Lab ArenaController."
 __license__ = "BSD-3-Clause"
 __url__ = "https://github.com/janelia-python/arena_interface_python"
