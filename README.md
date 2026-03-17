@@ -173,31 +173,47 @@ pixi run bench-full
 pixi run bench-smoke
 pixi run bench-windows-like
 pixi run bench-full-windows-like
-pixi run bench-socket-matrix
+pixi run bench-full-no-nodelay
+pixi run bench-full-no-latency-tuning
+pixi run bench-frame-rate-compare
+pixi run bench-frame-rate-matrix --ethernet 192.168.10.194
 pixi run perf-summary --jsonl bench_results.jsonl
+pixi run perf-summary-frame-rate
 ```
 
-Pixi forwards extra arguments after the task name to the underlying command, so
-`pixi run bench-full --json-out bench_results.jsonl --label "lab-a"` works
-as expected and appends one JSON result object for that run. For this repository
-layout, use `pixi run bench-full --ethernet 192.168.10.194 ...` rather than an
-extra separator before `--ethernet`.
+Pixi forwards extra arguments after the task name to the underlying command.
+That works well for `bench` subcommand options already baked into the task, so
+`pixi run bench-full --json-out bench_results.jsonl --label "lab-a"` appends
+one JSON result object for that run as expected.
 
-For the stock transport-agnostic tasks (`all-on`, `all-off`, `bench`,
-`bench-smoke`, and `bench-full`), set `ARENA_ETH_IP` or
-`ARENA_SERIAL_PORT` in your shell before running the task. This is the
-simplest way to choose the transport without rewriting the task command.
+For tasks that wrap `arena-interface bench`, transport selection is easier via
+`ARENA_ETH_IP` or `ARENA_SERIAL_PORT` because those are top-level CLI options.
+For example:
+
+```sh
+export ARENA_ETH_IP=192.168.10.194
+pixi run bench-full --label linux-default --json-out bench_results.jsonl
+```
+
+Script-backed tasks such as `bench-socket-matrix` and `bench-frame-rate-matrix`
+parse their own command-line options, so passing `--ethernet` or `--serial`
+after the task name is fine there.
 
 Task notes:
 
 - `bench-full` runs the full suite plus a streaming phase using `patterns/pat0004.pat`.
-- `bench-windows-like` disables `TCP_QUICKACK` while leaving `TCP_NODELAY` on.
+- `bench-full-windows-like` disables `TCP_QUICKACK` while leaving `TCP_NODELAY` on.
   This is a useful approximation when comparing a Linux host with a Windows-like
   Ethernet socket policy.
-- `bench-full-windows-like` is the same comparison but also includes the stream phase.
-- `bench-no-latency-tuning` disables both `TCP_NODELAY` and `TCP_QUICKACK`.
-- `bench-socket-matrix` runs several socket-policy variants back-to-back and is
-  the fastest way to quantify host-side latency tuning effects.
+- `bench-full-no-nodelay` isolates the effect of disabling `TCP_NODELAY` while
+  leaving `TCP_QUICKACK` enabled.
+- `bench-full-no-latency-tuning` disables both `TCP_NODELAY` and `TCP_QUICKACK`.
+- `bench-frame-rate-compare` runs four stream-enabled variants back-to-back and
+  appends labeled results to `bench_artifacts/frame_rate_results.jsonl`.
+- `bench-frame-rate-matrix` runs the same comparison through the dedicated
+  matrix helper and prints a delta summary relative to the default socket policy.
+- `perf-summary-frame-rate` renders a compact host-side comparison from the
+  collected frame-rate JSONL file and writes `bench_artifacts/frame_rate_summary.json`.
 
 ### Plain pip
 
@@ -222,8 +238,36 @@ A few key metrics are usually enough to compare runs:
 - stream frame rate and transmit throughput (`stream_frames`)
 - reconnect count plus cleanup status
 
-A convenient workflow is to keep both artifacts under a single timestamped
-directory and then generate a compact summary from them.
+### Quick frame-rate comparison of host socket tuning
+
+For a repeatable “how much are the Linux socket optimizations helping?” pass,
+set the transport once and run the dedicated comparison task:
+
+```sh
+export ARENA_ETH_IP=192.168.10.194
+pixi run bench-frame-rate-compare
+pixi run perf-summary-frame-rate
+```
+
+This captures four labeled runs in `bench_artifacts/frame_rate_results.jsonl`:
+
+- `linux-default`
+- `windows-like`
+- `no-nodelay`
+- `no-latency-tuning`
+
+The summary reports the deltas relative to `linux-default`, including stream
+rate, stream throughput, SPF achieved rate, and command RTT. Parent directories
+for `--json-out` are created automatically, so `bench_artifacts/` does not need
+to exist ahead of time.
+
+If you prefer a one-command matrix that also prints a relative delta summary to
+stdout, use the script-backed task instead:
+
+```sh
+pixi run bench-frame-rate-matrix --ethernet 192.168.10.194
+pixi run perf-summary-frame-rate-matrix
+```
 
 ### Terminal A: start QSPY and capture the raw QS log
 
@@ -246,34 +290,30 @@ after the benchmark completes so the log contains the full run.
 
 ### Terminal B: run the host benchmark and append JSONL results
 
-Linux default socket policy:
+Set the transport once, then run whichever socket-policy variants you want to
+compare:
 
 ```sh
-pixi run bench-full --ethernet 192.168.10.194 \
-  --label linux-default \
-  --json-out bench_artifacts/2026-03-13-eth/bench_results.jsonl
-```
-
-Windows-like comparison with `TCP_QUICKACK` disabled:
-
-```sh
-pixi run bench-full-windows-like --ethernet 192.168.10.194 \
-  --label windows-like \
-  --json-out bench_artifacts/2026-03-13-eth/bench_results.jsonl
+export ARENA_ETH_IP=192.168.10.194
+pixi run bench-full --label linux-default --json-out bench_artifacts/2026-03-13-eth/bench_results.jsonl
+pixi run bench-full-windows-like --label windows-like --json-out bench_artifacts/2026-03-13-eth/bench_results.jsonl
+pixi run bench-full-no-nodelay --label no-nodelay --json-out bench_artifacts/2026-03-13-eth/bench_results.jsonl
+pixi run bench-full-no-latency-tuning --label no-latency-tuning --json-out bench_artifacts/2026-03-13-eth/bench_results.jsonl
 ```
 
 PowerShell:
 
 ```powershell
-pixi run bench-full --ethernet 192.168.10.194 --label "windows-host" --json-out bench_artifacts\2026-03-13-eth\bench_results.jsonl
+$env:ARENA_ETH_IP = "192.168.10.194"
+pixi run bench-full --label "linux-default" --json-out bench_artifacts\2026-03-13-eth\bench_results.jsonl
+pixi run bench-full-windows-like --label "windows-like" --json-out bench_artifacts\2026-03-13-eth\bench_results.jsonl
 ```
 
-For a one-command socket comparison matrix, use:
+For a one-command socket comparison matrix with custom output paths, use:
 
 ```sh
 pixi run bench-socket-matrix --ethernet 192.168.10.194 \
   --stream-path patterns/pat0004.pat \
-  --label host-matrix \
   --json-out bench_artifacts/2026-03-13-eth/bench_results.jsonl
 ```
 

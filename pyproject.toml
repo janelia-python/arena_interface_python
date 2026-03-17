@@ -120,9 +120,24 @@ bench-no-quickack = "arena-interface --no-tcp-quickack bench"
 bench-windows-like = "arena-interface --no-tcp-quickack bench"
 bench-full-windows-like = "arena-interface --no-tcp-quickack bench --stream-path patterns/pat0004.pat"
 bench-no-nodelay = "arena-interface --no-tcp-nodelay bench"
+bench-full-no-nodelay = "arena-interface --no-tcp-nodelay bench --stream-path patterns/pat0004.pat"
 bench-no-latency-tuning = "arena-interface --no-tcp-nodelay --no-tcp-quickack bench"
+bench-full-no-latency-tuning = "arena-interface --no-tcp-nodelay --no-tcp-quickack bench --stream-path patterns/pat0004.pat"
+bench-frame-default = "arena-interface bench --stream-path patterns/pat0004.pat --label linux-default --json-out bench_artifacts/frame_rate_results.jsonl"
+bench-frame-windows-like = "arena-interface --no-tcp-quickack bench --stream-path patterns/pat0004.pat --label windows-like --json-out bench_artifacts/frame_rate_results.jsonl"
+bench-frame-no-nodelay = "arena-interface --no-tcp-nodelay bench --stream-path patterns/pat0004.pat --label no-nodelay --json-out bench_artifacts/frame_rate_results.jsonl"
+bench-frame-no-latency-tuning = "arena-interface --no-tcp-nodelay --no-tcp-quickack bench --stream-path patterns/pat0004.pat --label no-latency-tuning --json-out bench_artifacts/frame_rate_results.jsonl"
+bench-frame-rate-compare = [
+  { task = "bench-frame-default" },
+  { task = "bench-frame-windows-like" },
+  { task = "bench-frame-no-nodelay" },
+  { task = "bench-frame-no-latency-tuning" },
+]
 bench-socket-matrix = "python scripts/bench_matrix.py"
+bench-frame-rate-matrix = "python scripts/bench_matrix.py --stream-path patterns/pat0004.pat --json-out bench_artifacts/frame_rate_matrix.jsonl"
 perf-summary = "arena-interface-perf-summary"
+perf-summary-frame-rate = "arena-interface-perf-summary --jsonl bench_artifacts/frame_rate_results.jsonl --baseline linux-default --json-out bench_artifacts/frame_rate_summary.json"
+perf-summary-frame-rate-matrix = "arena-interface-perf-summary --jsonl bench_artifacts/frame_rate_matrix.jsonl --baseline default --json-out bench_artifacts/frame_rate_matrix_summary.json"
 
 [tool.pixi.target.linux-64.dependencies]
 make = "*"

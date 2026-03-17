@@ -19,3 +19,6 @@
 - added a performance summary tool for benchmark JSONL files and QSPY PERF logs
 - added Windows-like benchmark task aliases and matrix entries for socket-tuning comparisons
 - downgraded post-run ALL_OFF cleanup failures to recorded benchmark warnings so completed measurements are preserved
+- added stream-enabled Pixi tasks and matrix helpers for comparing Linux-default, Windows-like, and no-tuning host socket policies
+- made benchmark JSONL and performance summary commands create parent output directories automatically
+- updated GitHub Actions artifact steps to current major versions to avoid the Node.js 20 deprecation warnings on GitHub-hosted runners
