@@ -9,7 +9,7 @@ import random
 
 from arena_interface import ArenaInterface
 
-PATTERN_IDS = [1] + random.sample(range(2, 701), 4)
+PATTERN_IDS = [1] + random.sample(range(2, 10), 4)
 RUNTIME_DURATION = 50  # 50 × 100 ms = 5 s
 
 ip = os.environ.get("ARENA_ETH_IP", "10.103.40.45")
