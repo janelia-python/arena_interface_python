@@ -10,7 +10,7 @@ import time
 
 from arena_interface import ArenaInterface
 
-PATTERN_IDS = [1] + random.sample(range(2, 701), 4)
+PATTERN_IDS = [1] + random.sample(range(2, 10), 4)
 DURATION_S = 5.0
 TARGET_RATE_HZ = 300
 FRAME_INDEX_MIN = 1
