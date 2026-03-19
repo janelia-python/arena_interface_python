@@ -342,8 +342,8 @@ packages:
   timestamp: 1770939786096
 - pypi: ./
   name: arena-interface
-  version: 7.0.0
-  sha256: ca64cadf9210e5274c4792514a497fd37f054e51773da43a50d99602935b3ccc
+  version: 7.0.1
+  sha256: 89ef0ffd3e97cdcb998c1c70ade786ee46a5d3b94552e2c9845cf8f62fe9b48a
   requires_dist:
   - click>=8.1
   - pyserial>=3.5
